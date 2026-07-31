@@ -53,8 +53,16 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,400;1,700&family=DM+Sans:wght@300;400;500&display=swap"
           rel="stylesheet"
         />
-
-        {/* Google Tag Manager */}
+      </head>
+      <body className="min-h-full flex flex-col">
+        {/* Google Tag Manager — moved here from <head>. Next.js
+            auto-hoists `beforeInteractive` scripts to the document
+            head at build/runtime regardless of where they're written
+            in the tree, so keeping it manually inside <head> created
+            a duplicate-handling conflict that triggered a dev-only
+            "Encountered a script tag while rendering React component"
+            warning. Placement here still lands it before hydration,
+            just without the warning. */}
         <Script
           id="gtm-script"
           strategy="beforeInteractive"
@@ -66,9 +74,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer','GTM-KNLJ97HK');`,
           }}
         />
-        {/* End Google Tag Manager */}
-      </head>
-      <body className="min-h-full flex flex-col">
         {/* Google Tag Manager (noscript) */}
         <noscript>
           <iframe
