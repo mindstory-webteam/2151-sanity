@@ -3,8 +3,8 @@ export interface PostImage {
     _ref: string
     _type: 'reference'
   }
-  hotspot?: unknown
-  crop?: unknown
+  hotspot?: Record<string, unknown>
+  crop?: Record<string, unknown>
   alt?: string
   [key: string]: unknown
 }
