@@ -1,5 +1,5 @@
 import { getAllPosts } from "@/lib/sanity/queries";
-import BlogListClient from "@/component/BlogListClient";
+import BlogListClient from "../../component/BlogListClient";
 
 export const revalidate = 60;
 
