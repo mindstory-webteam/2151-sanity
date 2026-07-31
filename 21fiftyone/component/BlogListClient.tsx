@@ -60,7 +60,7 @@ export default function BlogListClient({ posts }: Props) {
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 140px 64px 48px;
+          padding-top:50px ;
           border-bottom: 1px solid var(--line);
           position: relative;
           overflow: hidden;
@@ -324,7 +324,7 @@ export default function BlogListClient({ posts }: Props) {
         <section className="blog-hero">
           <video
             className="blog-hero-video"
-            src="/video/blog-hero-bg.mp4"
+            src="/videos/video-3.webm"
             autoPlay
             muted
             loop
@@ -365,20 +365,7 @@ export default function BlogListClient({ posts }: Props) {
                 rootMargin="-40px"
                 textAlign="center"
               />
-              <SplitText
-                text="ON THE CRAFT."
-                tag="span"
-                className="blog-headline-main"
-                splitType="chars"
-                delay={30}
-                duration={1}
-                ease="power3.out"
-                from={{ opacity: 0, y: 40 }}
-                to={{ opacity: 1, y: 0 }}
-                threshold={0.1}
-                rootMargin="-40px"
-                textAlign="center"
-              />
+             
             </h1>
             <p className="blog-hero-sub" data-reveal data-d="4">
               Field notes on cinematography, story structure, and the craft
