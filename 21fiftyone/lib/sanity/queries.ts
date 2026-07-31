@@ -29,7 +29,8 @@ const POST_BY_SLUG_QUERY = groq`
     mainImage,
     body,
     author->{ name, image, bio },
-    categories[]->{ title }
+    categories[]->{ title },
+    seo
   }
 `
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import FloatingNavbar from "./Floatingnavbar";
@@ -15,6 +15,7 @@ interface Props {
 
 export default function BlogListClient({ posts }: Props) {
   const sectionRef = useRef<HTMLDivElement>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const els = sectionRef.current?.querySelectorAll<HTMLElement>("[data-reveal]");
@@ -402,17 +403,20 @@ export default function BlogListClient({ posts }: Props) {
                   data-d={String(Math.min(i + 1, 6))}
                   data-index={String(i + 1).padStart(2, "0")}
                 >
-                  {post.mainImage && (
+                  {post.mainImage && !failedImages.has(post._id) && (
                     <div className="blog-card-image">
                       <Image
                         src={urlForImage(post.mainImage)
                           .width(700)
                           .height(480)
                           .url()}
-                        alt={post.title}
+                        alt={post.mainImage.alt || post.title}
                         fill
                         sizes="(max-width: 700px) 100vw, (max-width: 1100px) 50vw, 33vw"
                         className="object-cover"
+                        onError={() =>
+                          setFailedImages((prev) => new Set(prev).add(post._id))
+                        }
                       />
                     </div>
                   )}

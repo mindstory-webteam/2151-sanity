@@ -1,3 +1,19 @@
+export interface PostImage {
+  asset?: {
+    _ref: string
+    _type: 'reference'
+  }
+  hotspot?: unknown
+  crop?: unknown
+  alt?: string
+  [key: string]: unknown
+}
+
+export interface PostSeo {
+  metaTitle?: string
+  metaDescription?: string
+  canonicalUrl?: string
+}
 
 export interface Post {
   _id: string
@@ -5,12 +21,13 @@ export interface Post {
   slug: string
   excerpt?: string
   publishedAt: string
-  mainImage?: any
+  mainImage?: PostImage
   author?: {
     name: string
-    image?: any
+    image?: PostImage
     bio?: string
   }
   categories?: { title: string }[]
   body?: any
+  seo?: PostSeo
 }

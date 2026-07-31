@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { PortableText, type PortableTextComponents } from "@portabletext/react";
@@ -18,6 +18,11 @@ interface Props {
 
 export default function BlogDetailClient({ post, allPosts }: Props) {
   const sectionRef = useRef<HTMLDivElement>(null);
+  const [mainImageFailed, setMainImageFailed] = useState(false);
+
+  useEffect(() => {
+    setMainImageFailed(false);
+  }, [post._id]);
 
   useEffect(() => {
     const els = sectionRef.current?.querySelectorAll<HTMLElement>("[data-reveal]");
@@ -45,7 +50,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         <div className="blog-body-image">
           <Image
             src={urlForImage(value).width(1200).url()}
-            alt={value.alt || ""}
+            alt={value.alt || post.title}
             fill
             sizes="(max-width: 900px) 100vw, 720px"
             className="object-cover"
@@ -262,6 +267,18 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
           top: 0; right: 0;
           width: 3px; height: 64px;
           background: var(--red);
+        }
+        .post-image-fallback {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 12px;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--muted);
         }
 
         .post-article {
@@ -507,14 +524,21 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
             {post.mainImage && (
               <div className="post-image-wrap" data-reveal data-d="4">
                 <div className="post-image">
-                  <Image
-                    src={urlForImage(post.mainImage).width(1400).height(744).url()}
-                    alt={post.title}
-                    fill
-                    priority
-                    sizes="(max-width: 900px) 100vw, 1000px"
-                    className="object-cover"
-                  />
+                  {!mainImageFailed ? (
+                    <Image
+                      src={urlForImage(post.mainImage).width(1400).height(744).url()}
+                      alt={post.mainImage.alt || post.title}
+                      fill
+                      priority
+                      sizes="(max-width: 900px) 100vw, 1000px"
+                      className="object-cover"
+                      onError={() => setMainImageFailed(true)}
+                    />
+                  ) : (
+                    <div className="post-image-fallback">
+                      Image unavailable
+                    </div>
+                  )}
                 </div>
               </div>
             )}
