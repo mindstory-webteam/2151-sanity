@@ -59,7 +59,7 @@ export default function BlogListClient({ posts }: Props) {
           display: flex;
           align-items: center;
           justify-content: center;
-          padding-top:20px;
+          padding: 140px 64px 48px;
           border-bottom: 1px solid var(--line);
           position: relative;
           overflow: hidden;
@@ -323,7 +323,7 @@ export default function BlogListClient({ posts }: Props) {
         <section className="blog-hero">
           <video
             className="blog-hero-video"
-            src="/videos/video-1.webm"
+            src="/video/blog-hero-bg.mp4"
             autoPlay
             muted
             loop
@@ -411,6 +411,7 @@ export default function BlogListClient({ posts }: Props) {
                           .url()}
                         alt={post.title}
                         fill
+                        sizes="(max-width: 700px) 100vw, (max-width: 1100px) 50vw, 33vw"
                         className="object-cover"
                       />
                     </div>

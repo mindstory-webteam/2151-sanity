@@ -47,6 +47,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
             src={urlForImage(value).width(1200).url()}
             alt={value.alt || ""}
             fill
+            sizes="(max-width: 900px) 100vw, 720px"
             className="object-cover"
           />
         </div>
@@ -511,6 +512,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
                     alt={post.title}
                     fill
                     priority
+                    sizes="(max-width: 900px) 100vw, 1000px"
                     className="object-cover"
                   />
                 </div>
@@ -532,6 +534,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
                         src={urlForImage(post.author.image).width(112).height(112).url()}
                         alt={post.author.name}
                         fill
+                        sizes="56px"
                         className="object-cover"
                       />
                     </div>
