@@ -97,6 +97,23 @@ interface SplitTextProps {
   style?:         React.CSSProperties;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   SplitText — FIXED
+
+   The hover-reveal "ghost" character used to be rendered as a
+   second real DOM text node (aria-hidden, but still literal
+   text). Next.js server-renders "use client" components before
+   any JS runs, so that raw duplicated text (e.g. "HHOOMMEE") was
+   present in the HTML delivered to crawlers, link-unfurlers, and
+   any tool that reads text nodes without respecting aria-hidden.
+
+   Fix: the ghost character is now painted via CSS
+   `content: attr(data-ghost)` on a ::after pseudo-element. This
+   is drawn by the browser but is NOT a real text node — it can't
+   be scraped, copied, or indexed as duplicate text. The visual
+   animation is identical. See the updated .fnb-char-wrap rules
+   in the <style> block below.
+────────────────────────────────────────────────────────────── */
 function SplitText({
   text,
   color         = "inherit",
@@ -133,31 +150,33 @@ function SplitText({
         color, ...style,
       }}
     >
-      {chars.map((ch, i) => (
-        <span
-          key={i}
-          style={{ display: "inline-block", position: "relative", overflow: "hidden", lineHeight }}
-        >
+      {chars.map((ch, i) => {
+        const displayChar = ch === " " ? "\u00A0" : ch;
+        return (
           <span
-            className="fnb-char-real"
-            style={{ display: "block", transition: `transform ${durationMs}ms ${easing} ${delay(i)}ms` }}
+            key={i}
+            aria-hidden="true"
+            className="fnb-char-wrap"
+            data-ghost={displayChar}
+            style={
+              {
+                display: "inline-block",
+                position: "relative",
+                overflow: "hidden",
+                lineHeight,
+                // consumed by .fnb-char-real / .fnb-char-wrap::after in <style> below
+                "--fnb-delay": `${delay(i)}ms`,
+                "--fnb-duration": `${durationMs}ms`,
+                "--fnb-easing": easing,
+                "--fnb-hover-color": hoverColor || color,
+              } as React.CSSProperties
+            }
           >
-            {ch === " " ? "\u00A0" : ch}
+            {/* Single real text node per character */}
+            <span className="fnb-char-real">{displayChar}</span>
           </span>
-          <span
-            aria-hidden
-            className="fnb-char-ghost"
-            style={{
-              display: "block", position: "absolute", top: "100%", left: 0,
-              whiteSpace: "pre",
-              transition: `transform ${durationMs}ms ${easing} ${delay(i)}ms`,
-              color: hoverColor || color,
-            }}
-          >
-            {ch === " " ? "\u00A0" : ch}
-          </span>
-        </span>
-      ))}
+        );
+      })}
     </span>
   );
 }
@@ -218,17 +237,20 @@ function RollButton({
         color: rColor, whiteSpace: "nowrap",
         pointerEvents: "none", userSelect: "none",
       }}>{label}</span>
-      <span style={{
-        display: "block",
-        position: "absolute", left: 0, right: 0, textAlign: "center",
-        transform: hov ? "translateY(0)" : "translateY(110%)",
-        transition: "transform .42s cubic-bezier(.16,1,.3,1)",
-        fontFamily: "'Montserrat', sans-serif",
-        fontSize: fs, fontWeight: 700,
-        letterSpacing: "0.16em", textTransform: "uppercase",
-        color: rHovC, whiteSpace: "nowrap",
-        pointerEvents: "none", userSelect: "none",
-      }}>{label}</span>
+      <span
+        aria-hidden="true"
+        style={{
+          display: "block",
+          position: "absolute", left: 0, right: 0, textAlign: "center",
+          transform: hov ? "translateY(0)" : "translateY(110%)",
+          transition: "transform .42s cubic-bezier(.16,1,.3,1)",
+          fontFamily: "'Montserrat', sans-serif",
+          fontSize: fs, fontWeight: 700,
+          letterSpacing: "0.16em", textTransform: "uppercase",
+          color: rHovC, whiteSpace: "nowrap",
+          pointerEvents: "none", userSelect: "none",
+        }}
+      >{label}</span>
     </span>
   );
 
@@ -259,7 +281,7 @@ function LogoMark({ logoSrc }: { logoSrc: string }) {
     <Link href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none", flexShrink: 0 }}>
       <img
         src={logoSrc}
-        alt="Logo"
+        alt="21Fiftyone logo"
         style={{
           height: 28,
           width: "auto",
@@ -777,10 +799,31 @@ export default function FloatingNavbar() {
           position: absolute; top: 0; right: 0;
           width: 100%; height: 100%;
         }
+
+        /* ── SplitText hover animation — FIXED ──
+           .fnb-char-real is the single real text node.
+           .fnb-char-wrap::after paints the "ghost" character
+           purely via CSS generated content (content: attr()),
+           which is never a real DOM text node, so it can't be
+           scraped/indexed as duplicate text. */
+        .fnb-char-real {
+          display: block;
+          transition: transform var(--fnb-duration) var(--fnb-easing) var(--fnb-delay);
+        }
+        .fnb-char-wrap::after {
+          content: attr(data-ghost);
+          display: block;
+          position: absolute;
+          top: 100%;
+          left: 0;
+          white-space: pre;
+          color: var(--fnb-hover-color);
+          transition: transform var(--fnb-duration) var(--fnb-easing) var(--fnb-delay);
+        }
         a:hover .fnb-char-real,
         button:hover .fnb-char-real { transform: translateY(-100%); }
-        a:hover .fnb-char-ghost,
-        button:hover .fnb-char-ghost { transform: translateY(-100%); }
+        a:hover .fnb-char-wrap::after,
+        button:hover .fnb-char-wrap::after { transform: translateY(-100%); }
 
         .fnb-navlist { counter-reset: fnbitem; }
         .fnb-navitem::after {
