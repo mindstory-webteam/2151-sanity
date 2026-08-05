@@ -36,6 +36,18 @@ interface SplitTextProps {
   onLetterAnimationComplete?: () => void;
   showCallback?: boolean;
   tag?: ElementType;
+  /**
+   * Deprecated — the hover-roll animation has been removed (it was
+   * rendering duplicate DOM text nodes, causing doubled text like
+   * "TTHHEEMMOOLLDD??" in the raw HTML). These props are kept ONLY so
+   * existing call sites (e.g. Aboutsection.tsx) don't fail to compile.
+   * They are accepted but intentionally unused.
+   */
+  hoverRoll?: boolean;
+  hoverRollDirection?: "left" | "right" | "center";
+  autoRoll?: boolean;
+  autoRollInterval?: number;
+  autoRollDuration?: number;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -73,6 +85,16 @@ export default function SplitText({
   onLetterAnimationComplete,
   showCallback = false,
   tag: Tag = "div",
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  hoverRoll,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  hoverRollDirection,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  autoRoll,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  autoRollInterval,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  autoRollDuration,
 }: SplitTextProps) {
   const containerRef = useRef<HTMLElement>(null);
   const tlRef        = useRef<gsap.core.Timeline | null>(null);
