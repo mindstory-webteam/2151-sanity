@@ -498,9 +498,7 @@ export default function ProjectsScroll() {
                 rootMargin="-80px"
                 hoverRoll
                 hoverRollDirection="left"
-                autoRoll
-                autoRollInterval={5500}
-                autoRollDuration={620}
+                
               />
             </div>
 
@@ -517,9 +515,7 @@ export default function ProjectsScroll() {
                 rootMargin="-80px"
                 hoverRoll
                 hoverRollDirection="center"
-                autoRoll
-                autoRollInterval={5500}
-                autoRollDuration={620}
+               
               />
             </div>
           </div>

@@ -489,9 +489,7 @@ export default function BenefitSection() {
                     threshold={0.15}
                     rootMargin="-80px"
                     hoverRoll
-                    autoRoll
-            autoRollInterval={5500}
-            autoRollDuration={620}
+                 
                     hoverRollDirection="left"
                   />
                 </div>
@@ -509,9 +507,7 @@ export default function BenefitSection() {
                     rootMargin="-80px"
                     hoverRoll
                     hoverRollDirection="center"
-                    autoRoll
-            autoRollInterval={5500}
-            autoRollDuration={620}
+                  
                   />
                 </div>
               </div>

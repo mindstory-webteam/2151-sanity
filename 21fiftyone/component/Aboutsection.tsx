@@ -895,9 +895,8 @@ export default function AboutSection() {
                   onLetterAnimationComplete={handleAnimationComplete}
                   showCallback
                   hoverRoll
-                  autoRoll
-                  autoRollInterval={5500}
-                  autoRollDuration={620}
+                 
+                 
                   hoverRollDirection="center"
                 />
 
@@ -916,9 +915,7 @@ export default function AboutSection() {
                   rootMargin="-40px"
                   textAlign="left"
                   hoverRoll
-                  autoRoll
-                  autoRollInterval={5500}
-                  autoRollDuration={620}
+                  
                   hoverRollDirection="left"
                 />
               </div>

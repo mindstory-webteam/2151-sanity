@@ -660,7 +660,7 @@ export default function Hero() {
                 from={{ opacity: 0, y: 60, skewX: -4 }} to={{ opacity: 1, y: 0, skewX: 0 }}
                 threshold={0} rootMargin="0px"
                 hoverRoll hoverRollDirection="left"
-                autoRoll autoRollInterval={5000} autoRollDuration={420}
+            
               />
               <SplitText
                 key={`line2-${currentIndex}`}
@@ -671,7 +671,7 @@ export default function Hero() {
                 from={{ opacity: 0, y: 60, skewX: -4 }} to={{ opacity: 1, y: 0, skewX: 0 }}
                 threshold={0} rootMargin="0px"
                 hoverRoll hoverRollDirection="left"
-                autoRoll autoRollInterval={5400} autoRollDuration={420}
+              
               />
               <SplitText
                 key={`accent-${currentIndex}`}
@@ -682,7 +682,7 @@ export default function Hero() {
                 from={{ opacity: 0, y: 72, skewX: 6 }} to={{ opacity: 1, y: 0, skewX: 0 }}
                 threshold={0} rootMargin="0px"
                 hoverRoll hoverRollDirection="left"
-                autoRoll autoRollInterval={3800} autoRollDuration={420}
+                
               />
             </div>
 

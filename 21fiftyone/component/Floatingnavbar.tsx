@@ -80,7 +80,15 @@ function useSectionTheme(enabled: boolean): NavTheme {
   return theme;
 }
 
-interface SplitTextProps {
+/* ─────────────────────────────────────────────────────────────
+   NavLabel — replaces the old SplitText component entirely.
+
+   No per-character splitting, no hover-roll animation, no
+   aria-hidden ghost row. Just plain text with a simple CSS
+   color transition on hover. The rendered HTML now contains
+   exactly one clean text node per label — "HOME", "ABOUT", etc.
+────────────────────────────────────────────────────────────── */
+interface NavLabelProps {
   text:           string;
   color?:         string;
   hoverColor?:    string;
@@ -90,31 +98,10 @@ interface SplitTextProps {
   letterSpacing?: string;
   textTransform?: React.CSSProperties["textTransform"];
   lineHeight?:    string | number;
-  direction?:     "left" | "center" | "right";
-  staggerMs?:     number;
-  durationMs?:    number;
-  easing?:        string;
   style?:         React.CSSProperties;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   SplitText — FIXED
-
-   The hover-reveal "ghost" character used to be rendered as a
-   second real DOM text node (aria-hidden, but still literal
-   text). Next.js server-renders "use client" components before
-   any JS runs, so that raw duplicated text (e.g. "HHOOMMEE") was
-   present in the HTML delivered to crawlers, link-unfurlers, and
-   any tool that reads text nodes without respecting aria-hidden.
-
-   Fix: the ghost character is now painted via CSS
-   `content: attr(data-ghost)` on a ::after pseudo-element. This
-   is drawn by the browser but is NOT a real text node — it can't
-   be scraped, copied, or indexed as duplicate text. The visual
-   animation is identical. See the updated .fnb-char-wrap rules
-   in the <style> block below.
-────────────────────────────────────────────────────────────── */
-function SplitText({
+function NavLabel({
   text,
   color         = "inherit",
   hoverColor,
@@ -124,59 +111,24 @@ function SplitText({
   letterSpacing = "inherit",
   textTransform = "uppercase",
   lineHeight    = 1,
-  direction     = "left",
-  staggerMs     = 28,
-  durationMs    = 400,
-  easing        = "cubic-bezier(.16,1,.3,1)",
   style,
-}: SplitTextProps) {
-  const chars = text.split("");
-  const total = chars.length;
-
-  function delay(i: number) {
-    if (direction === "left")  return i * staggerMs;
-    if (direction === "right") return (total - 1 - i) * staggerMs;
-    const mid = (total - 1) / 2;
-    return Math.abs(i - mid) * staggerMs;
-  }
-
+}: NavLabelProps) {
   return (
     <span
-      aria-label={text}
-      style={{
-        display: "inline-flex", flexWrap: "nowrap",
-        fontSize, fontFamily, fontWeight,
-        letterSpacing, textTransform, lineHeight,
-        color, ...style,
-      }}
+      className="fnb-navlabel"
+      style={
+        {
+          display: "inline-block",
+          fontSize, fontFamily, fontWeight,
+          letterSpacing, textTransform, lineHeight,
+          color,
+          transition: "color .3s ease",
+          "--fnb-hover-color": hoverColor || color,
+          ...style,
+        } as React.CSSProperties
+      }
     >
-      {chars.map((ch, i) => {
-        const displayChar = ch === " " ? "\u00A0" : ch;
-        return (
-          <span
-            key={i}
-            aria-hidden="true"
-            className="fnb-char-wrap"
-            data-ghost={displayChar}
-            style={
-              {
-                display: "inline-block",
-                position: "relative",
-                overflow: "hidden",
-                lineHeight,
-                // consumed by .fnb-char-real / .fnb-char-wrap::after in <style> below
-                "--fnb-delay": `${delay(i)}ms`,
-                "--fnb-duration": `${durationMs}ms`,
-                "--fnb-easing": easing,
-                "--fnb-hover-color": hoverColor || color,
-              } as React.CSSProperties
-            }
-          >
-            {/* Single real text node per character */}
-            <span className="fnb-char-real">{displayChar}</span>
-          </span>
-        );
-      })}
+      {text}
     </span>
   );
 }
@@ -308,7 +260,7 @@ function NavSplitLink({ label, href, active, iconColor }: { label: string; href:
         position: "relative",
       }}
     >
-      <SplitText
+      <NavLabel
         text={label}
         fontSize={10.5}
         fontFamily="'Montserrat',sans-serif"
@@ -316,9 +268,6 @@ function NavSplitLink({ label, href, active, iconColor }: { label: string; href:
         letterSpacing="0.12em"
         color={active ? B.red : hov ? iconColor : `${iconColor}70`}
         hoverColor={B.red}
-        direction="center"
-        staggerMs={20}
-        durationMs={340}
       />
       {active && (
         <span style={{
@@ -354,11 +303,10 @@ function MenuToggle({ open, onClick, plusHRef, plusVRef, iconRef, color = "#1a1a
         padding: 0, color, transition: "color .4s ease",
       }}
     >
-      <SplitText
+      <NavLabel
         text={label} color={color} hoverColor={color}
         fontSize={10} fontFamily="'Montserrat',sans-serif"
         fontWeight={600} letterSpacing="0.18em"
-        direction="center" staggerMs={32} durationMs={380}
       />
       <span
         ref={iconRef}
@@ -400,7 +348,7 @@ function PanelNavItem({ link, active, onClick }: { link: { label: string; href: 
           className="fnb-itemlabel"
           style={{ display: "inline-block", transformOrigin: "50% 100%", willChange: "transform" }}
         >
-          <SplitText
+          <NavLabel
             text={link.label}
             fontSize="clamp(2.4rem,4.8vw,3.8rem)"
             fontFamily="'Anton',sans-serif"
@@ -409,10 +357,6 @@ function PanelNavItem({ link, active, onClick }: { link: { label: string; href: 
             lineHeight={0.92}
             color={active ? B.red : hov ? B.cream : "rgba(242,237,230,0.55)"}
             hoverColor={B.red}
-            direction="left"
-            staggerMs={30}
-            durationMs={440}
-            easing="cubic-bezier(.16,1,.3,1)"
           />
         </span>
         {active && (
@@ -439,7 +383,7 @@ function SocialRollLink({ href, label }: { href: string; label: string }) {
       onMouseLeave={() => setHov(false)}
       style={{ textDecoration: "none", display: "inline-block", padding: "2px 0" }}
     >
-      <SplitText
+      <NavLabel
         text={label}
         color={hov ? B.cream : B.creamDim}
         hoverColor={B.cream}
@@ -448,9 +392,6 @@ function SocialRollLink({ href, label }: { href: string; label: string }) {
         fontWeight={400}
         textTransform="none"
         letterSpacing="normal"
-        direction="left"
-        staggerMs={22}
-        durationMs={340}
       />
     </a>
   );
@@ -800,30 +741,11 @@ export default function FloatingNavbar() {
           width: 100%; height: 100%;
         }
 
-        /* ── SplitText hover animation — FIXED ──
-           .fnb-char-real is the single real text node.
-           .fnb-char-wrap::after paints the "ghost" character
-           purely via CSS generated content (content: attr()),
-           which is never a real DOM text node, so it can't be
-           scraped/indexed as duplicate text. */
-        .fnb-char-real {
-          display: block;
-          transition: transform var(--fnb-duration) var(--fnb-easing) var(--fnb-delay);
+        /* ── NavLabel hover — simple color transition, no split-text ── */
+        a:hover .fnb-navlabel,
+        button:hover .fnb-navlabel {
+          color: var(--fnb-hover-color) !important;
         }
-        .fnb-char-wrap::after {
-          content: attr(data-ghost);
-          display: block;
-          position: absolute;
-          top: 100%;
-          left: 0;
-          white-space: pre;
-          color: var(--fnb-hover-color);
-          transition: transform var(--fnb-duration) var(--fnb-easing) var(--fnb-delay);
-        }
-        a:hover .fnb-char-real,
-        button:hover .fnb-char-real { transform: translateY(-100%); }
-        a:hover .fnb-char-wrap::after,
-        button:hover .fnb-char-wrap::after { transform: translateY(-100%); }
 
         .fnb-navlist { counter-reset: fnbitem; }
         .fnb-navitem::after {

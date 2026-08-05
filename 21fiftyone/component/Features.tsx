@@ -413,9 +413,7 @@ const Features = () => {
               textAlign="left"
               hoverRoll
               hoverRollDirection="left"
-              autoRoll
-              autoRollInterval={5500}
-              autoRollDuration={620}
+            
             />
             <SplitText
               text="Services"
@@ -432,9 +430,7 @@ const Features = () => {
               textAlign="left"
               hoverRoll
               hoverRollDirection="left"
-              autoRoll
-              autoRollInterval={5500}
-              autoRollDuration={620}
+            
             />
           </div>
 
