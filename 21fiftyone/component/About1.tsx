@@ -662,8 +662,8 @@ const About1 = () => {
       <div className="relative mb-8 mt-86 flex flex-col items-center gap-5 px-4">
 
         <div className="ab-label-row w-full max-w-5xl">
-          <span className="ab-label-l">WELCOME TO 21 FIFTYONE</span>
-          <span className="ab-label-r">21FIFTYONE</span>
+          {/* <span className="ab-label-l">WELCOME TO 21 FIFTYONE</span>
+          <span className="ab-label-r">21FIFTYONE</span> */}
         </div>
 
         <div style={{ width: "100%", maxWidth: "1100px" }}>
