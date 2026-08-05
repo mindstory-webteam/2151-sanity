@@ -682,9 +682,7 @@ const About1 = () => {
             textAlign="center"
             hoverRoll
             hoverRollDirection="center"
-            autoRoll
-            autoRollInterval={5000}
-            autoRollDuration={620}
+          
           />
 
           <SplitText
@@ -702,9 +700,7 @@ const About1 = () => {
             textAlign="center"
             hoverRoll
             hoverRollDirection="left"
-            autoRoll
-            autoRollInterval={5500}
-            autoRollDuration={620}
+          
           />
         </div>
 
