@@ -26,9 +26,11 @@ export async function generateMetadata({ params }: PageProps) {
   const title = post.seo?.metaTitle || post.title;
   const description = post.seo?.metaDescription || post.excerpt;
   const canonical = post.seo?.canonicalUrl || `${SITE_URL}/blog/${post.slug}`;
-  const ogImage = post.mainImage
-    ? urlForImage(post.mainImage).width(1200).height(630).url()
-    : undefined;
+
+  // Guard: mainImage may exist with alt text but no actual uploaded asset.
+  // urlForImage() returns null in that case instead of throwing.
+  const imageBuilder = post.mainImage ? urlForImage(post.mainImage) : null;
+  const ogImage = imageBuilder ? imageBuilder.width(1200).height(630).url() : undefined;
 
   return {
     title: `${title} | 21FiftyOne Studio`,

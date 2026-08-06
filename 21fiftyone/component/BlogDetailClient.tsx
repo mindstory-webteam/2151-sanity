@@ -44,19 +44,37 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
     return () => io.disconnect();
   }, [post]);
 
+  // Precompute safe URLs once — urlForImage() returns null when a post has
+  // no actual uploaded asset (e.g. alt text was set but the image was
+  // never selected in Studio), so every consumer must check for that.
+  const mainImageBuilder = post.mainImage ? urlForImage(post.mainImage) : null;
+  const mainImageUrl = mainImageBuilder
+    ? mainImageBuilder.width(1400).height(744).url()
+    : null;
+
+  const authorImageBuilder = post.author?.image ? urlForImage(post.author.image) : null;
+  const authorImageUrl = authorImageBuilder
+    ? authorImageBuilder.width(112).height(112).url()
+    : null;
+
   const portableTextComponents: PortableTextComponents = {
     types: {
-      image: ({ value }) => (
-        <div className="blog-body-image">
-          <Image
-            src={urlForImage(value).width(1200).url()}
-            alt={value.alt || post.title}
-            fill
-            sizes="(max-width: 900px) 100vw, 720px"
-            className="object-cover"
-          />
-        </div>
-      ),
+      image: ({ value }) => {
+        const builder = urlForImage(value);
+        if (!builder) return null; // skip silently if asset is missing
+
+        return (
+          <div className="blog-body-image">
+            <Image
+              src={builder.width(1200).url()}
+              alt={value.alt || post.title}
+              fill
+              sizes="(max-width: 900px) 100vw, 720px"
+              className="object-cover"
+            />
+          </div>
+        );
+      },
     },
     block: {
       h2: ({ children }) => <h2 className="blog-body-h2">{children}</h2>,
@@ -70,8 +88,8 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
     },
     marks: {
       link: ({ children, value }) => (
-        <a
-          href={value?.href}
+        
+        <a  href={value?.href}
           className="blog-body-link"
           target="_blank"
           rel="noopener noreferrer"
@@ -521,13 +539,13 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
               </div>
             </header>
 
-            {post.mainImage && (
+            {mainImageUrl && (
               <div className="post-image-wrap" data-reveal data-d="4">
                 <div className="post-image">
                   {!mainImageFailed ? (
                     <Image
-                      src={urlForImage(post.mainImage).width(1400).height(744).url()}
-                      alt={post.mainImage.alt || post.title}
+                      src={mainImageUrl}
+                      alt={post.mainImage?.alt || post.title}
                       fill
                       priority
                       sizes="(max-width: 900px) 100vw, 1000px"
@@ -552,10 +570,10 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
             {post.author?.name && (
               <div className="post-author-card" data-reveal data-d="4">
                 <div className="post-author-inner">
-                  {post.author.image && (
+                  {authorImageUrl && (
                     <div className="post-author-avatar">
                       <Image
-                        src={urlForImage(post.author.image).width(112).height(112).url()}
+                        src={authorImageUrl}
                         alt={post.author.name}
                         fill
                         sizes="56px"

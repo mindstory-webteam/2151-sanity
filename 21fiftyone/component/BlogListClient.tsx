@@ -381,59 +381,69 @@ export default function BlogListClient({ posts }: Props) {
             </p>
           ) : (
             <div className="blog-grid">
-              {posts.map((post, i) => (
-                <Link
-                  key={post._id}
-                  href={`/blog/${post.slug}`}
-                  className="blog-card"
-                  data-reveal
-                  data-d={String(Math.min(i + 1, 6))}
-                  data-index={String(i + 1).padStart(2, "0")}
-                >
-                  {post.mainImage && !failedImages.has(post._id) && (
-                    <div className="blog-card-image">
-                      <Image
-                        src={urlForImage(post.mainImage)
-                          .width(700)
-                          .height(480)
-                          .url()}
-                        alt={post.mainImage.alt || post.title}
-                        fill
-                        sizes="(max-width: 700px) 100vw, (max-width: 1100px) 50vw, 33vw"
-                        className="object-cover"
-                        onError={() =>
-                          setFailedImages((prev) => new Set(prev).add(post._id))
-                        }
-                      />
-                    </div>
-                  )}
+              {posts.map((post, i) => {
+                // urlForImage() returns null when the post has no actual
+                // uploaded image asset — skip the thumbnail entirely then,
+                // instead of passing a broken src to next/image.
+                const cardImageBuilder = post.mainImage
+                  ? urlForImage(post.mainImage)
+                  : null;
+                const cardImageUrl = cardImageBuilder
+                  ? cardImageBuilder.width(700).height(480).url()
+                  : null;
+                const showImage = !!cardImageUrl && !failedImages.has(post._id);
 
-                  <div className="blog-card-body">
-                    {post.categories && post.categories.length > 0 && (
-                      <span className="blog-card-category">
-                        {post.categories.map((c) => c.title).join(" / ")}
-                      </span>
+                return (
+                  <Link
+                    key={post._id}
+                    href={`/blog/${post.slug}`}
+                    className="blog-card"
+                    data-reveal
+                    data-d={String(Math.min(i + 1, 6))}
+                    data-index={String(i + 1).padStart(2, "0")}
+                  >
+                    {showImage && (
+                      <div className="blog-card-image">
+                        <Image
+                          src={cardImageUrl!}
+                          alt={post.mainImage?.alt || post.title}
+                          fill
+                          sizes="(max-width: 700px) 100vw, (max-width: 1100px) 50vw, 33vw"
+                          className="object-cover"
+                          onError={() =>
+                            setFailedImages((prev) => new Set(prev).add(post._id))
+                          }
+                        />
+                      </div>
                     )}
 
-                    <h2 className="blog-card-title">{post.title}</h2>
+                    <div className="blog-card-body">
+                      {post.categories && post.categories.length > 0 && (
+                        <span className="blog-card-category">
+                          {post.categories.map((c) => c.title).join(" / ")}
+                        </span>
+                      )}
 
-                    {post.excerpt && (
-                      <p className="blog-card-excerpt">{post.excerpt}</p>
-                    )}
+                      <h2 className="blog-card-title">{post.title}</h2>
 
-                    <div className="blog-card-meta">
-                      {post.author?.name && <span>{post.author.name}</span>}
-                      <span className="blog-card-dot">&middot;</span>
-                      <time dateTime={post.publishedAt}>
-                        {new Date(post.publishedAt).toLocaleDateString(
-                          "en-US",
-                          { year: "numeric", month: "short", day: "numeric" }
-                        )}
-                      </time>
+                      {post.excerpt && (
+                        <p className="blog-card-excerpt">{post.excerpt}</p>
+                      )}
+
+                      <div className="blog-card-meta">
+                        {post.author?.name && <span>{post.author.name}</span>}
+                        <span className="blog-card-dot">&middot;</span>
+                        <time dateTime={post.publishedAt}>
+                          {new Date(post.publishedAt).toLocaleDateString(
+                            "en-US",
+                            { year: "numeric", month: "short", day: "numeric" }
+                          )}
+                        </time>
+                      </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </section>
