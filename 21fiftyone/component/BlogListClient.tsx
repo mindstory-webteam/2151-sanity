@@ -385,11 +385,13 @@ export default function BlogListClient({ posts }: Props) {
                 // urlForImage() returns null when the post has no actual
                 // uploaded image asset — skip the thumbnail entirely then,
                 // instead of passing a broken src to next/image.
+                // fit("max") prevents Sanity from erroring on undersized
+                // source images by never upscaling past the original.
                 const cardImageBuilder = post.mainImage
                   ? urlForImage(post.mainImage)
                   : null;
                 const cardImageUrl = cardImageBuilder
-                  ? cardImageBuilder.width(700).height(480).url()
+                  ? cardImageBuilder.width(700).fit("max").auto("format").url()
                   : null;
                 const showImage = !!cardImageUrl && !failedImages.has(post._id);
 

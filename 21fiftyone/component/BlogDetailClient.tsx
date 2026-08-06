@@ -47,14 +47,16 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
   // Precompute safe URLs once — urlForImage() returns null when a post has
   // no actual uploaded asset (e.g. alt text was set but the image was
   // never selected in Studio), so every consumer must check for that.
+  // fit("max") scales down to fit within the given bounds without ever
+  // upscaling or erroring on a source image smaller than the target box.
   const mainImageBuilder = post.mainImage ? urlForImage(post.mainImage) : null;
   const mainImageUrl = mainImageBuilder
-    ? mainImageBuilder.width(1400).height(744).url()
+    ? mainImageBuilder.width(1400).fit("max").auto("format").url()
     : null;
 
   const authorImageBuilder = post.author?.image ? urlForImage(post.author.image) : null;
   const authorImageUrl = authorImageBuilder
-    ? authorImageBuilder.width(112).height(112).url()
+    ? authorImageBuilder.width(112).fit("max").auto("format").url()
     : null;
 
   const portableTextComponents: PortableTextComponents = {
@@ -66,7 +68,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         return (
           <div className="blog-body-image">
             <Image
-              src={builder.width(1200).url()}
+              src={builder.width(1200).fit("max").auto("format").url()}
               alt={value.alt || post.title}
               fill
               sizes="(max-width: 900px) 100vw, 720px"
