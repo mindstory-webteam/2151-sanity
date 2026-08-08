@@ -126,8 +126,9 @@ const Contact = () => {
       icon: <Phone size={16} />,
       label: "Call Us",
       items: [
-        { value: "+91 98765 43210", href: "tel:+919876543210" },
+        
         { value: "+91 8281610051", href: "tel:+918281610051" },
+        { value: "+91 9778189712", href: "tel:+919778189712" }
       ],
     },
     {
