@@ -4,11 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 
 const B = {
-  red:   "#c8372d",
+  red: "#c8372d",
   cream: "#f2ede6",
   black: "#0c0c0c",
   muted: "#8a8480",
-  line:  "rgba(12,12,12,0.10)",
+  line: "rgba(12,12,12,0.10)",
 };
 
 const LOGO_SRC = "/logo/2151-logo.png";
@@ -21,31 +21,31 @@ const ADDRESS_TEXT = "Regus Door No. 2703, Cabin 721, HiLITE Business Park, 7th 
 const ADDRESS_MAPS_URL = "https://maps.google.com/?q=Thrissur+Kozhikode+Kerala+India";
 
 const NAV_COLS = [
-  
+
   {
     heading: "Studio",
     links: [
-      { label: "About",   href: "/about"  },
-      { label: "Studio",  href: "/studio" },
-      { label: "Careers", href: "/careers"       },
-      { label: "Contact", href: "/contact"       },
+      { label: "About", href: "/about" },
+      { label: "Studio", href: "/studio" },
+      { label: "Careers", href: "/careers" },
+      { label: "Contact", href: "/contact" },
     ],
   },
   {
     heading: "Services",
     links: [
       { label: "VISUAL PRODUCTION", href: "/services" },
-      { label: "MOVIE PRODUCTION",   href: "/services" },
+      { label: "MOVIE PRODUCTION", href: "/services" },
       { label: "CORPORATE FILMS", href: "/services" },
       { label: "COMMERCIAL PRODUCTION", href: "/services" },
       { label: "AI PRODUCTION", href: "/services" },
-       { label: "ENTERTAINMENT EVENTS", href: "/services" },
+      { label: "ENTERTAINMENT EVENTS", href: "/services" },
     ],
   },
   {
     heading: "Policies",
     links: [
-     { label: "Privacy Policy", href: "/privacy-policy" },
+      { label: "Privacy Policy", href: "/privacy-policy" },
       { label: "Terms & Conditions", href: "/terms-conditions" },
     ],
   },
@@ -57,32 +57,32 @@ const SOCIAL_LINKS = [
     href: "https://www.instagram.com/21fiftyone?igsh=MXV2NTI3M2QzMTMwZw==",
     icon: (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-        <circle cx="12" cy="12" r="4"/>
-        <circle cx="17.5" cy="6.5" r="0.8" fill="currentColor" stroke="none"/>
+        <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="17.5" cy="6.5" r="0.8" fill="currentColor" stroke="none" />
       </svg>
     ),
   },
   {
-  label: "Facebook",
-  href: "https://www.facebook.com/share/1Aw4MkQKzk/?mibextid=wwXIfr",
-  icon: (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-    >
-      <path d="M22 12a10 10 0 1 0-11.5 9.87v-6.99H7.9V12h2.6V9.8c0-2.57 1.53-3.99 3.87-3.99 1.12 0 2.3.2 2.3.2v2.53h-1.3c-1.28 0-1.68.8-1.68 1.62V12h2.86l-.46 2.88h-2.4v6.99A10 10 0 0 0 22 12z" />
-    </svg>
-  ),
-},
+    label: "Facebook",
+    href: "https://www.facebook.com/share/1Aw4MkQKzk/?mibextid=wwXIfr",
+    icon: (
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M22 12a10 10 0 1 0-11.5 9.87v-6.99H7.9V12h2.6V9.8c0-2.57 1.53-3.99 3.87-3.99 1.12 0 2.3.2 2.3.2v2.53h-1.3c-1.28 0-1.68.8-1.68 1.62V12h2.86l-.46 2.88h-2.4v6.99A10 10 0 0 0 22 12z" />
+      </svg>
+    ),
+  },
   {
     label: "Behance",
     href: "https://www.behance.net/mindstorycreative",
     icon: (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M7.5 11.5c.83 0 1.5-.67 1.5-1.5S8.33 8.5 7.5 8.5H4v3h3.5zm.25 2H4v3.5h3.75c.97 0 1.75-.78 1.75-1.75S8.72 13.5 7.75 13.5zM2 7h6.5c1.93 0 3.5 1.34 3.5 3 0 1.01-.51 1.91-1.29 2.46C11.87 13.05 12.5 14.2 12.5 15.5c0 2.07-1.68 3.75-3.75 3.75H2V7zm14.5 2.5c-1.38 0-2.5.78-2.86 1.9h5.72c-.36-1.12-1.48-1.9-2.86-1.9zM22 14h-7.5c.23 1.28 1.37 2.25 2.75 2.25.87 0 1.64-.41 2.13-1.05l1.93.93C20.53 17.38 19.1 18 17.5 18c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5v1zm-6.5-5H21v-1.5h-5.5V9z"/>
+        <path d="M7.5 11.5c.83 0 1.5-.67 1.5-1.5S8.33 8.5 7.5 8.5H4v3h3.5zm.25 2H4v3.5h3.75c.97 0 1.75-.78 1.75-1.75S8.72 13.5 7.75 13.5zM2 7h6.5c1.93 0 3.5 1.34 3.5 3 0 1.01-.51 1.91-1.29 2.46C11.87 13.05 12.5 14.2 12.5 15.5c0 2.07-1.68 3.75-3.75 3.75H2V7zm14.5 2.5c-1.38 0-2.5.78-2.86 1.9h5.72c-.36-1.12-1.48-1.9-2.86-1.9zM22 14h-7.5c.23 1.28 1.37 2.25 2.75 2.25.87 0 1.64-.41 2.13-1.05l1.93.93C20.53 17.38 19.1 18 17.5 18c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5v1zm-6.5-5H21v-1.5h-5.5V9z" />
       </svg>
     ),
   },
@@ -90,40 +90,40 @@ const SOCIAL_LINKS = [
 
 /* ─── internal SplitText (no external dep needed) ─── */
 interface SplitTextProps {
-  text:           string;
-  color?:         string;
-  hoverColor?:    string;
-  fontSize?:      string | number;
-  fontFamily?:    string;
-  fontWeight?:    number;
+  text: string;
+  color?: string;
+  hoverColor?: string;
+  fontSize?: string | number;
+  fontFamily?: string;
+  fontWeight?: number;
   letterSpacing?: string;
   textTransform?: React.CSSProperties["textTransform"];
-  lineHeight?:    string | number;
-  direction?:     "left" | "center" | "right";
-  staggerMs?:     number;
-  durationMs?:    number;
+  lineHeight?: string | number;
+  direction?: "left" | "center" | "right";
+  staggerMs?: number;
+  durationMs?: number;
 }
 
 function SplitText({
   text,
-  color          = "inherit",
+  color = "inherit",
   hoverColor,
-  fontSize       = "inherit",
-  fontFamily     = "inherit",
-  fontWeight     = 500,
-  letterSpacing  = "inherit",
-  textTransform  = "uppercase",
-  lineHeight     = 1,
-  direction      = "left",
-  staggerMs      = 28,
-  durationMs     = 400,
+  fontSize = "inherit",
+  fontFamily = "inherit",
+  fontWeight = 500,
+  letterSpacing = "inherit",
+  textTransform = "uppercase",
+  lineHeight = 1,
+  direction = "left",
+  staggerMs = 28,
+  durationMs = 400,
 }: SplitTextProps) {
-  const chars  = text.split("");
-  const total  = chars.length;
+  const chars = text.split("");
+  const total = chars.length;
   const easing = "cubic-bezier(.16,1,.3,1)";
 
   function delay(i: number) {
-    if (direction === "left")  return i * staggerMs;
+    if (direction === "left") return i * staggerMs;
     if (direction === "right") return (total - 1 - i) * staggerMs;
     const mid = (total - 1) / 2;
     return Math.abs(i - mid) * staggerMs;
@@ -337,10 +337,13 @@ export default function Footer() {
             <Link href="mailto:hello@21fiftyone.com" className="ft-brand-email">
               hello@21fiftyone.com
             </Link>
-            <br/>
+            <br />
             <Link href="tel:+919778189712" className="ft-brand-phone">
-  +91 9778189712
-</Link>
+              +91 9778189712
+            </Link>
+            <Link href="tel:+918281610051" className="ft-brand-phone">
+              +91 8281610051
+            </Link>
             <span className="ft-socials-label">Follow Us</span>
             {/* ── CHANGED: icon-only inline row ── */}
             <div className="ft-socials-row">
