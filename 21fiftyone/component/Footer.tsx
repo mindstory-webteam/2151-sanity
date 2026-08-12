@@ -338,8 +338,8 @@ export default function Footer() {
               hello@21fiftyone.com
             </Link>
             <br/>
-            <Link href="tel:+917736402151" className="ft-brand-phone">
-  +91 77364 02151
+            <Link href="tel:+919778189712" className="ft-brand-phone">
+  +91 9778189712
 </Link>
             <span className="ft-socials-label">Follow Us</span>
             {/* ── CHANGED: icon-only inline row ── */}
