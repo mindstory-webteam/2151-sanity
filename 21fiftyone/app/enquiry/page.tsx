@@ -5,6 +5,26 @@ import React, { useEffect, useRef, useState } from "react";
 
 const SHEET_ENDPOINT = process.env.NEXT_PUBLIC_SHEET_ENDPOINT ?? "";
 
+/* =========================================================
+   ZOHO BIGIN — WEB TO RECORD CONFIG
+   ---------------------------------------------------------
+   NOTE: the <form action="..."> line was cut off in the embed
+   code you shared. Open your Bigin webform HTML, find:
+        <form ... action='https://bigin.zoho.com/crm/WebToRecordForm' ...>
+   and paste that exact URL into BIGIN_ACTION below.
+   (.in / .eu / .com.au accounts use a different domain.)
+   ========================================================= */
+const BIGIN_ACTION = "https://bigin.zoho.com/crm/WebToRecordForm";
+const BIGIN_XNQSJSDP =
+  "af6f81c584c217062046341398aea84b365dccb84adfcccc5dcfe47a173e8207";
+const BIGIN_XMIWTLD =
+  "9412ef8e6da1fc62f60a74f8ffb30e9ff1e680d890ab8ab987e86f2154267ab6dd1dcbd5138ff5ebc90cc8c7587b461b";
+const BIGIN_ACTION_TYPE = "UG90ZW50aWFscw==";
+const BIGIN_PIPELINE = "Sales Pipeline Standard 2";
+const BIGIN_STAGE = "Qualification";
+const BIGIN_LEAD_SOURCE = "Official Website";
+const BIGIN_IFRAME_NAME = "bigin_post_frame";
+
 interface ServiceItem {
   tc: string;
   title: string;
@@ -60,6 +80,34 @@ const SERVICE_OPTIONS = [
   "Entertainment Events",
 ];
 
+/* Bigin picklist values for POTENTIALCF3 / POTENTIALCF2 — must match exactly */
+const BUDGET_OPTIONS = [
+  "Below ₹25K",
+  "₹25K–₹50K",
+  "₹50K–₹1L",
+  "₹1L–₹3L",
+  "₹3L+",
+];
+
+const TIMELINE_OPTIONS = [
+  "Immediately",
+  "Within 30 days",
+  "1–3 months",
+  "Just Exploring",
+];
+
+/* Website service names -> Bigin "Service Interested In?" picklist values.
+   Bigin rejects any value that is not in the picklist, so we translate.
+   The original selection is still kept inside the Description. */
+const SERVICE_TO_BIGIN: Record<string, string> = {
+  "Visual Production": "Video Production",
+  "Movie Production": "Video Production",
+  "Corporate Films": "Video Production",
+  "Commercial Production": "Video Production",
+  "AI Production": "AI Videos",
+  "Entertainment Events": "Video Production",
+};
+
 /* ---------- Service row with hover-video behaviour ---------- */
 const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -94,6 +142,27 @@ const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
   );
 };
 
+/* ---------- Tracking (Lead Page URL + UTM) ---------- */
+interface TrackingData {
+  leadPageUrl: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmContent: string;
+  utmTerm: string;
+}
+
+const EMPTY_TRACKING: TrackingData = {
+  leadPageUrl: "",
+  utmSource: "",
+  utmMedium: "",
+  utmCampaign: "",
+  utmContent: "",
+  utmTerm: "",
+};
+
+const TRACKING_KEY = "f21_tracking";
+
 /* ============================ PAGE ============================ */
 export default function Home() {
   const [scrolled, setScrolled] = useState(false);
@@ -106,6 +175,9 @@ export default function Home() {
   const [popupSubmitting, setPopupSubmitting] = useState(false);
   const [bannerError, setBannerError] = useState(false);
   const [popupError, setPopupError] = useState(false);
+
+  // NEW: campaign tracking captured from the URL
+  const [tracking, setTracking] = useState<TrackingData>(EMPTY_TRACKING);
 
   const popupFormRef = useRef<HTMLFormElement>(null);
   const closeTimerRef = useRef<number | null>(null);
@@ -148,6 +220,48 @@ export default function Home() {
   useEffect(() => {
     const t = window.setTimeout(() => setModalOpen(true), 700);
     return () => window.clearTimeout(t);
+  }, []);
+
+  /* ---------------------------------------------------------
+     Capture Lead Page URL + UTM parameters.
+     Values are stored in sessionStorage so a visitor who lands
+     on ?utm_source=google and then browses around still submits
+     the original campaign data.
+     --------------------------------------------------------- */
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const stored = window.sessionStorage.getItem(TRACKING_KEY);
+      const saved: Partial<TrackingData> = stored ? JSON.parse(stored) : {};
+
+      const pick = (key: string, fallback: string) =>
+        params.get(key) || fallback || "";
+
+      const data: TrackingData = {
+        leadPageUrl: window.location.href,
+        utmSource: pick("utm_source", saved.utmSource ?? ""),
+        utmMedium: pick("utm_medium", saved.utmMedium ?? ""),
+        utmCampaign: pick("utm_campaign", saved.utmCampaign ?? ""),
+        utmContent: pick("utm_content", saved.utmContent ?? ""),
+        utmTerm: pick("utm_term", saved.utmTerm ?? ""),
+      };
+
+      /* fall back to referrer when there is no utm_source at all */
+      if (!data.utmSource && document.referrer) {
+        try {
+          data.utmSource = new URL(document.referrer).hostname;
+        } catch {
+          /* ignore malformed referrer */
+        }
+      }
+      if (!data.utmSource) data.utmSource = "direct";
+
+      window.sessionStorage.setItem(TRACKING_KEY, JSON.stringify(data));
+      setTracking(data);
+    } catch (err) {
+      console.error("Tracking capture failed:", err);
+      setTracking({ ...EMPTY_TRACKING, leadPageUrl: window.location.href });
+    }
   }, []);
 
   /* scroll reveal animations */
@@ -207,7 +321,116 @@ export default function Home() {
     });
   };
 
-  /* form submit — now posts to Google Sheets via Apps Script */
+  /* ---------------------------------------------------------
+     Sends the same payload to Zoho Bigin (Web to Record).
+     Zoho does not send CORS headers, so a normal fetch() can
+     never reach it from the browser. We instead build a real
+     <form> in memory and POST it into a hidden iframe — the
+     record is created in Bigin and the page never navigates.
+     --------------------------------------------------------- */
+  const sendToBigin = (payload: {
+    source: string;
+    name: string;
+    company: string;
+    phone: string;
+    email: string;
+    service: string;
+    budget: string;
+    timeline: string;
+    message: string;
+  }) =>
+    new Promise<void>((resolve, reject) => {
+      try {
+        /* make sure the hidden iframe exists */
+        let frame = document.getElementById(
+          BIGIN_IFRAME_NAME
+        ) as HTMLIFrameElement | null;
+
+        if (!frame) {
+          frame = document.createElement("iframe");
+          frame.id = BIGIN_IFRAME_NAME;
+          frame.name = BIGIN_IFRAME_NAME;
+          frame.style.display = "none";
+          frame.setAttribute("aria-hidden", "true");
+          document.body.appendChild(frame);
+        }
+
+        /* normalise the phone number to E.164-ish with the India dial code */
+        const rawPhone = payload.phone.trim();
+        const phone = rawPhone.startsWith("+")
+          ? rawPhone
+          : `+91${rawPhone.replace(/^0+/, "").replace(/\s+/g, "")}`;
+
+        /* build the Description that Bigin expects (mandatory field) */
+        const descriptionParts = [
+          payload.message?.trim() || "No additional details provided.",
+          `Selected service on website: ${payload.service}`,
+          `Submitted from: ${payload.source === "popup" ? "Popup enquiry form" : "Hero banner form"}`,
+        ];
+        if (tracking.utmMedium) {
+          descriptionParts.push(`UTM Medium: ${tracking.utmMedium}`);
+        }
+        if (tracking.utmTerm) {
+          descriptionParts.push(`UTM Term: ${tracking.utmTerm}`);
+        }
+
+        const fields: Record<string, string> = {
+          xnQsjsdp: BIGIN_XNQSJSDP,
+          zc_gad: "",
+          xmIwtLD: BIGIN_XMIWTLD,
+          actionType: BIGIN_ACTION_TYPE,
+          returnURL: "null",
+
+          "Potential Name": payload.name,
+          "Accounts.Account Name": payload.company?.trim() || payload.name,
+          "Contacts.Mobile": phone,
+          "Contacts.Email": payload.email,
+
+          POTENTIALCF1: SERVICE_TO_BIGIN[payload.service] ?? "Video Production",
+          POTENTIALCF3: payload.budget,
+          POTENTIALCF2: payload.timeline,
+          Description: descriptionParts.join("\n"),
+
+          POTENTIALCF4: tracking.leadPageUrl,
+          POTENTIALCF7: tracking.utmCampaign,
+          POTENTIALCF5: tracking.utmSource,
+          POTENTIALCF6: tracking.utmContent,
+
+          Pipeline: BIGIN_PIPELINE,
+          Stage: BIGIN_STAGE,
+          "Lead Source": BIGIN_LEAD_SOURCE,
+        };
+
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = BIGIN_ACTION;
+        form.target = BIGIN_IFRAME_NAME;
+        form.acceptCharset = "UTF-8";
+        form.style.display = "none";
+
+        Object.entries(fields).forEach(([key, value]) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = key;
+          input.value = value ?? "";
+          form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+
+        /* the iframe is cross-origin, so we can't read its load event
+           reliably — give the POST a moment, then clean up. */
+        window.setTimeout(() => {
+          form.remove();
+          resolve();
+        }, 900);
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+  /* form submit — posts to Zoho Bigin (and Google Sheets if configured) */
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>,
     source: "banner" | "popup"
@@ -218,18 +441,39 @@ export default function Home() {
 
     const payload = {
       source,
-      name: formData.get("name"),
-      phone: formData.get("phone"),
-      email: formData.get("email"),
-      service: formData.get("service"),
-      message: formData.get("message") || "",
+      name: String(formData.get("name") ?? ""),
+      company: String(formData.get("company") ?? ""),
+      phone: String(formData.get("phone") ?? ""),
+      email: String(formData.get("email") ?? ""),
+      service: String(formData.get("service") ?? ""),
+      budget: String(formData.get("budget") ?? ""),
+      timeline: String(formData.get("timeline") ?? ""),
+      message: String(formData.get("message") ?? ""),
+      leadPageUrl: tracking.leadPageUrl,
+      utmSource: tracking.utmSource,
+      utmMedium: tracking.utmMedium,
+      utmCampaign: tracking.utmCampaign,
+      utmContent: tracking.utmContent,
+      utmTerm: tracking.utmTerm,
+    };
+
+    /* Bigin is the system of record — Google Sheets is a best-effort
+       backup and must never block or fail the submission. */
+    const alsoSendToSheet = async () => {
+      if (!SHEET_ENDPOINT) return;
+      try {
+        await sendToSheet(payload);
+      } catch (err) {
+        console.error("Sheet backup failed (CRM still received the lead):", err);
+      }
     };
 
     if (source === "popup") {
       setPopupSubmitting(true);
       setPopupError(false);
       try {
-        await sendToSheet(payload);
+        await sendToBigin(payload);
+        await alsoSendToSheet();
         setPopupSuccess(true);
         closeTimerRef.current = window.setTimeout(closeModal, 2600);
       } catch (err) {
@@ -242,7 +486,8 @@ export default function Home() {
       setBannerSubmitting(true);
       setBannerError(false);
       try {
-        await sendToSheet(payload);
+        await sendToBigin(payload);
+        await alsoSendToSheet();
         setBannerBtnText("Sent — Thank You!");
         form.reset();
         bannerTimerRef.current = window.setTimeout(
@@ -342,6 +587,10 @@ export default function Home() {
               <input type="text" id="b-name" name="name" placeholder="Your name" required />
             </div>
             <div className="field">
+              <label htmlFor="b-company">Company / Brand</label>
+              <input type="text" id="b-company" name="company" placeholder="Your company name" required />
+            </div>
+            <div className="field">
               <label htmlFor="b-phone">Phone / WhatsApp</label>
               <input type="tel" id="b-phone" name="phone" placeholder="+91 00000 00000" required />
             </div>
@@ -357,6 +606,26 @@ export default function Home() {
                   <option key={s}>{s}</option>
                 ))}
               </select>
+            </div>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="b-budget">Monthly / Project Budget</label>
+                <select id="b-budget" name="budget" defaultValue="" required>
+                  <option value="" disabled>Select a budget</option>
+                  {BUDGET_OPTIONS.map((b) => (
+                    <option key={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="b-timeline">When do you want to start?</label>
+                <select id="b-timeline" name="timeline" defaultValue="" required>
+                  <option value="" disabled>Select a timeline</option>
+                  {TIMELINE_OPTIONS.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <button type="submit" className="btn-solid" disabled={bannerSubmitting}>
               {bannerSubmitting ? "Sending…" : bannerBtnText}
@@ -581,9 +850,15 @@ export default function Home() {
               </div>
               <div className="field-row">
                 <div className="field">
+                  <label htmlFor="p-company">Company / Brand</label>
+                  <input type="text" id="p-company" name="company" placeholder="Your company name" required />
+                </div>
+                <div className="field">
                   <label htmlFor="p-phone">Phone / WhatsApp</label>
                   <input type="tel" id="p-phone" name="phone" placeholder="+91 00000 00000" required />
                 </div>
+              </div>
+              <div className="field-row">
                 <div className="field">
                   <label htmlFor="p-service">Service Interested In</label>
                   <select id="p-service" name="service" defaultValue="" required>
@@ -593,6 +868,24 @@ export default function Home() {
                     ))}
                   </select>
                 </div>
+                <div className="field">
+                  <label htmlFor="p-budget">Monthly / Project Budget</label>
+                  <select id="p-budget" name="budget" defaultValue="" required>
+                    <option value="" disabled>Select a budget</option>
+                    {BUDGET_OPTIONS.map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="field">
+                <label htmlFor="p-timeline">When do you want to start?</label>
+                <select id="p-timeline" name="timeline" defaultValue="" required>
+                  <option value="" disabled>Select a timeline</option>
+                  {TIMELINE_OPTIONS.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </select>
               </div>
               <div className="field">
                 <label htmlFor="p-message">Project Details</label>
@@ -621,6 +914,16 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* ===== HIDDEN TARGET FOR THE BIGIN POST ===== */}
+      <iframe
+        id={BIGIN_IFRAME_NAME}
+        name={BIGIN_IFRAME_NAME}
+        title="Bigin submission target"
+        aria-hidden="true"
+        tabIndex={-1}
+        style={{ display: "none", width: 0, height: 0, border: 0 }}
+      />
     </>
   );
 }
