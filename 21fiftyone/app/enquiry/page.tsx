@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation"; // NEW
 
 
 const SHEET_ENDPOINT = process.env.NEXT_PUBLIC_SHEET_ENDPOINT ?? "";
@@ -24,6 +25,9 @@ const BIGIN_PIPELINE = "Sales Pipeline Standard 2";
 const BIGIN_STAGE = "Qualification";
 const BIGIN_LEAD_SOURCE = "Official Website";
 const BIGIN_IFRAME_NAME = "bigin_post_frame";
+
+/* NEW: where users land after a successful enquiry */
+const THANK_YOU_PATH = "/thank-you";
 
 interface ServiceItem {
   tc: string;
@@ -165,29 +169,26 @@ const TRACKING_KEY = "f21_tracking";
 
 /* ============================ PAGE ============================ */
 export default function Home() {
+  const router = useRouter(); // NEW
+
   const [scrolled, setScrolled] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [popupSuccess, setPopupSuccess] = useState(false);
-  const [bannerBtnText, setBannerBtnText] = useState("Request a Call Back");
 
-  // NEW: submission-in-progress + error state for both forms
+  // submission-in-progress + error state for both forms
   const [bannerSubmitting, setBannerSubmitting] = useState(false);
   const [popupSubmitting, setPopupSubmitting] = useState(false);
   const [bannerError, setBannerError] = useState(false);
   const [popupError, setPopupError] = useState(false);
 
-  // NEW: campaign tracking captured from the URL
+  // campaign tracking captured from the URL
   const [tracking, setTracking] = useState<TrackingData>(EMPTY_TRACKING);
 
   const popupFormRef = useRef<HTMLFormElement>(null);
-  const closeTimerRef = useRef<number | null>(null);
-  const bannerTimerRef = useRef<number | null>(null);
 
   const openModal = () => setModalOpen(true);
 
   const closeModal = () => {
     setModalOpen(false);
-    setPopupSuccess(false);
     setPopupError(false);
     popupFormRef.current?.reset();
   };
@@ -221,6 +222,11 @@ export default function Home() {
     const t = window.setTimeout(() => setModalOpen(true), 700);
     return () => window.clearTimeout(t);
   }, []);
+
+  /* NEW: warm up the thank-you route so the redirect is instant */
+  useEffect(() => {
+    router.prefetch(THANK_YOU_PATH);
+  }, [router]);
 
   /* ---------------------------------------------------------
      Capture Lead Page URL + UTM parameters.
@@ -288,14 +294,6 @@ export default function Home() {
     } else {
       revealTargets.forEach((el) => el.classList.add("visible"));
     }
-  }, []);
-
-  /* clear pending timers on unmount */
-  useEffect(() => {
-    return () => {
-      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
-      if (bannerTimerRef.current) window.clearTimeout(bannerTimerRef.current);
-    };
   }, []);
 
   /* ---------------------------------------------------------
@@ -430,14 +428,28 @@ export default function Home() {
       }
     });
 
-  /* form submit — posts to Zoho Bigin (and Google Sheets if configured) */
+  /* ---------------------------------------------------------
+     NEW: navigate to the thank-you page. The name / service /
+     source travel in the query string so the page can
+     personalise itself and fire conversion events.
+     --------------------------------------------------------- */
+  const goToThankYou = (p: { name: string; service: string; source: string }) => {
+    const q = new URLSearchParams({
+      name: p.name,
+      service: p.service,
+      from: p.source,
+    });
+    router.push(`${THANK_YOU_PATH}?${q.toString()}`);
+  };
+
+  /* form submit — posts to Zoho Bigin (and Google Sheets if configured),
+     then redirects to /thank-you */
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>,
     source: "banner" | "popup"
   ) => {
     e.preventDefault();
-    const form = e.currentTarget;
-    const formData = new FormData(form);
+    const formData = new FormData(e.currentTarget);
 
     const payload = {
       source,
@@ -468,38 +480,20 @@ export default function Home() {
       }
     };
 
-    if (source === "popup") {
-      setPopupSubmitting(true);
-      setPopupError(false);
-      try {
-        await sendToBigin(payload);
-        await alsoSendToSheet();
-        setPopupSuccess(true);
-        closeTimerRef.current = window.setTimeout(closeModal, 2600);
-      } catch (err) {
-        console.error("Popup form submission failed:", err);
-        setPopupError(true);
-      } finally {
-        setPopupSubmitting(false);
-      }
-    } else {
-      setBannerSubmitting(true);
-      setBannerError(false);
-      try {
-        await sendToBigin(payload);
-        await alsoSendToSheet();
-        setBannerBtnText("Sent — Thank You!");
-        form.reset();
-        bannerTimerRef.current = window.setTimeout(
-          () => setBannerBtnText("Request a Call Back"),
-          2600
-        );
-      } catch (err) {
-        console.error("Banner form submission failed:", err);
-        setBannerError(true);
-      } finally {
-        setBannerSubmitting(false);
-      }
+    const setSubmitting = source === "popup" ? setPopupSubmitting : setBannerSubmitting;
+    const setError = source === "popup" ? setPopupError : setBannerError;
+
+    setSubmitting(true);
+    setError(false);
+    try {
+      await sendToBigin(payload);
+      await alsoSendToSheet();
+      goToThankYou(payload);
+      /* keep the button in "Sending…" until the route changes */
+    } catch (err) {
+      console.error(`${source} form submission failed:`, err);
+      setError(true);
+      setSubmitting(false);
     }
   };
 
@@ -628,7 +622,7 @@ export default function Home() {
               </div>
             </div>
             <button type="submit" className="btn-solid" disabled={bannerSubmitting}>
-              {bannerSubmitting ? "Sending…" : bannerBtnText}
+              {bannerSubmitting ? "Sending…" : "Request a Call Back"}
             </button>
             {bannerError && (
               <p className="form-note" style={{ color: "#e2231a" }}>
@@ -832,86 +826,78 @@ export default function Home() {
         <div className="modal-box">
           <button className="modal-close" onClick={closeModal} aria-label="Close">×</button>
 
-          <div id="modalFormWrap" style={{ display: popupSuccess ? "none" : "block" }}>
-            <span className="eyebrow">Let's Create Together</span>
-            <h3>Send an Enquiry</h3>
-            <p className="sub">Share a few details and our studio will get back to you shortly.</p>
+          <span className="eyebrow">Let's Create Together</span>
+          <h3>Send an Enquiry</h3>
+          <p className="sub">Share a few details and our studio will get back to you shortly.</p>
 
-            <form id="popupForm" ref={popupFormRef} onSubmit={(e) => handleSubmit(e, "popup")}>
-              <div className="field-row">
-                <div className="field">
-                  <label htmlFor="p-name">Full Name</label>
-                  <input type="text" id="p-name" name="name" placeholder="Your name" required />
-                </div>
-                <div className="field">
-                  <label htmlFor="p-email">Email</label>
-                  <input type="email" id="p-email" name="email" placeholder="you@brand.com" required />
-                </div>
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <label htmlFor="p-company">Company / Brand</label>
-                  <input type="text" id="p-company" name="company" placeholder="Your company name" required />
-                </div>
-                <div className="field">
-                  <label htmlFor="p-phone">Phone / WhatsApp</label>
-                  <input type="tel" id="p-phone" name="phone" placeholder="+91 00000 00000" required />
-                </div>
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <label htmlFor="p-service">Service Interested In</label>
-                  <select id="p-service" name="service" defaultValue="" required>
-                    <option value="" disabled>Select a service</option>
-                    {SERVICE_OPTIONS.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="p-budget">Monthly / Project Budget</label>
-                  <select id="p-budget" name="budget" defaultValue="" required>
-                    <option value="" disabled>Select a budget</option>
-                    {BUDGET_OPTIONS.map((b) => (
-                      <option key={b}>{b}</option>
-                    ))}
-                  </select>
-                </div>
+          <form id="popupForm" ref={popupFormRef} onSubmit={(e) => handleSubmit(e, "popup")}>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="p-name">Full Name</label>
+                <input type="text" id="p-name" name="name" placeholder="Your name" required />
               </div>
               <div className="field">
-                <label htmlFor="p-timeline">When do you want to start?</label>
-                <select id="p-timeline" name="timeline" defaultValue="" required>
-                  <option value="" disabled>Select a timeline</option>
-                  {TIMELINE_OPTIONS.map((t) => (
-                    <option key={t}>{t}</option>
+                <label htmlFor="p-email">Email</label>
+                <input type="email" id="p-email" name="email" placeholder="you@brand.com" required />
+              </div>
+            </div>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="p-company">Company / Brand</label>
+                <input type="text" id="p-company" name="company" placeholder="Your company name" required />
+              </div>
+              <div className="field">
+                <label htmlFor="p-phone">Phone / WhatsApp</label>
+                <input type="tel" id="p-phone" name="phone" placeholder="+91 00000 00000" required />
+              </div>
+            </div>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="p-service">Service Interested In</label>
+                <select id="p-service" name="service" defaultValue="" required>
+                  <option value="" disabled>Select a service</option>
+                  {SERVICE_OPTIONS.map((s) => (
+                    <option key={s}>{s}</option>
                   ))}
                 </select>
               </div>
               <div className="field">
-                <label htmlFor="p-message">Project Details</label>
-                <textarea
-                  id="p-message"
-                  name="message"
-                  rows={3}
-                  placeholder="Tell us briefly about your project..."
-                ></textarea>
+                <label htmlFor="p-budget">Monthly / Project Budget</label>
+                <select id="p-budget" name="budget" defaultValue="" required>
+                  <option value="" disabled>Select a budget</option>
+                  {BUDGET_OPTIONS.map((b) => (
+                    <option key={b}>{b}</option>
+                  ))}
+                </select>
               </div>
-              <button type="submit" className="btn-solid" disabled={popupSubmitting}>
-                {popupSubmitting ? "Sending…" : "Send Enquiry"}
-              </button>
-              {popupError && (
-                <p className="form-note" style={{ color: "#e2231a" }}>
-                  Something went wrong. Please try again.
-                </p>
-              )}
-            </form>
-          </div>
-
-          <div className={`form-success${popupSuccess ? " active" : ""}`} id="formSuccess">
-            <div className="check">✓</div>
-            <h4>Enquiry Received</h4>
-            <p>Thank you — our studio will reach out to you within 24 hours.</p>
-          </div>
+            </div>
+            <div className="field">
+              <label htmlFor="p-timeline">When do you want to start?</label>
+              <select id="p-timeline" name="timeline" defaultValue="" required>
+                <option value="" disabled>Select a timeline</option>
+                {TIMELINE_OPTIONS.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="p-message">Project Details</label>
+              <textarea
+                id="p-message"
+                name="message"
+                rows={3}
+                placeholder="Tell us briefly about your project..."
+              ></textarea>
+            </div>
+            <button type="submit" className="btn-solid" disabled={popupSubmitting}>
+              {popupSubmitting ? "Sending…" : "Send Enquiry"}
+            </button>
+            {popupError && (
+              <p className="form-note" style={{ color: "#e2231a" }}>
+                Something went wrong. Please try again.
+              </p>
+            )}
+          </form>
         </div>
       </div>
 
@@ -1582,23 +1568,6 @@ footer ul a:hover{color:var(--gold); opacity:1;}
 }
 .modal-box .sub{color:var(--muted); font-size:13.5px; margin-bottom:28px;}
 .modal-box .btn-solid{width:100%; text-align:center; margin-top:8px;}
-.form-success{
-  display:none;
-  text-align:center;
-  padding:30px 0;
-}
-.form-success.active{display:block;}
-.form-success .check{
-  width:56px; height:56px;
-  border:1px solid var(--gold);
-  border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  margin:0 auto 20px;
-  color:var(--gold);
-  font-size:24px;
-}
-.form-success h4{font-size:24px; font-style:italic; margin-bottom:8px;}
-.form-success p{color:var(--muted); font-size:13.5px;}
 
 /* ===== RESPONSIVE ===== */
 @media(max-width:960px){
