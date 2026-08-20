@@ -1,1900 +1,626 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+/**
+ * Zoho Bigin "2151 Get Quote" form — React / TSX port.
+ *
+ * Notes before you ship:
+ * 1. ZOHO_ACTION_URL below is the standard Bigin web-to-record endpoint. The
+ *    original HTML snippet had no action attribute, so copy the exact URL from
+ *    the <form action="..."> of your embed code if it differs (e.g. the .in or
+ *    .eu data centre).
+ * 2. The two hidden tokens (xnQsjsdp / xmIwtLD) are form-specific. They are
+ *    already filled in from your snippet.
+ * 3. Zoho does not allow cross-origin fetch(), so this submits natively into a
+ *    hidden iframe. That keeps the user on the page and lets us show a success
+ *    state instead of redirecting.
+ */
 
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
-const SHEET_ENDPOINT = process.env.NEXT_PUBLIC_SHEET_ENDPOINT ?? "";
+const ZOHO_ACTION_URL = "https://bigin.zoho.com/crm/WebToRecordForm";
 
-/* =========================================================
-   ZOHO BIGIN — WEB TO RECORD CONFIG
-   ---------------------------------------------------------
-   NOTE: the <form action="..."> line was cut off in the embed
-   code you shared. Open your Bigin webform HTML, find:
-        <form ... action='https://bigin.zoho.com/crm/WebToRecordForm' ...>
-   and paste that exact URL into BIGIN_ACTION below.
-   (.in / .eu / .com.au accounts use a different domain.)
-   ========================================================= */
-const BIGIN_ACTION = "https://bigin.zoho.com/crm/WebToRecordForm";
-const BIGIN_XNQSJSDP =
-  "af6f81c584c217062046341398aea84b365dccb84adfcccc5dcfe47a173e8207";
-const BIGIN_XMIWTLD =
-  "9412ef8e6da1fc62f60a74f8ffb30e9ff1e680d890ab8ab987e86f2154267ab6dd1dcbd5138ff5ebc90cc8c7587b461b";
-const BIGIN_ACTION_TYPE = "UG90ZW50aWFscw==";
-const BIGIN_PIPELINE = "Sales Pipeline Standard 2";
-const BIGIN_STAGE = "Qualification";
-const BIGIN_LEAD_SOURCE = "Official Website";
-const BIGIN_IFRAME_NAME = "bigin_post_frame";
+const ZOHO_TOKENS = {
+  xnQsjsdp: "af6f81c584c217062046341398aea84b365dccb84adfcccc5dcfe47a173e8207",
+  xmIwtLD:
+    "9412ef8e6da1fc62f60a74f8ffb30e9ff1e680d890ab8ab987e86f2154267ab6dd1dcbd5138ff5ebc90cc8c7587b461b",
+  actionType: "UG90ZW50aWFscw==", // base64 "Potentials"
+};
 
-interface ServiceItem {
-  tc: string;
-  title: string;
-  desc: string;
-  video: string;
-}
+const SERVICES = [
+  "Digital Marketing",
+  "SEO",
+  "Website Development",
+  "Video Production",
+  "Influencer Marketing",
+  "AI Videos",
+] as const;
 
-const SERVICES: ServiceItem[] = [
-  {
-    tc: "00:01",
-    title: "Visual Production",
-    desc: "Brand videos, product visuals, campaign content and social media video assets with a clear visual style.",
-    video: "/videos/banner/s-1.webm",
-  },
-  {
-    tc: "00:02",
-    title: "Movie Production",
-    desc: "Short films, music-led stories, cinematic projects and narrative content with full production support.",
-    video: "/videos/banner/s-2.webm",
-  },
-  {
-    tc: "00:03",
-    title: "Corporate Films",
-    desc: "Company profile videos, leadership videos, training videos and interview-led business stories.",
-    video: "/videos/banner/s-3.webm",
-  },
-  {
-    tc: "00:04",
-    title: "Commercial Production",
-    desc: "Ad films, product commercials, launch videos and campaign creatives for marketing-focused brands.",
-    video: "/videos/banner/s-4.webm",
-  },
-  {
-    tc: "00:05",
-    title: "AI Production",
-    desc: "AI tools for creative production, concept visuals, AI video anchors and faster campaign assets.",
-    video: "/videos/banner/s-5.webm",
-  },
-  {
-    tc: "00:06",
-    title: "Entertainment Events",
-    desc: "Event visuals for launches, performances, brand experiences and cultural programs.",
-    video: "/videos/banner/s-6.webm",
-  },
-];
-
-const SERVICE_OPTIONS = [
-  "Visual Production",
-  "Movie Production",
-  "Corporate Films",
-  "Commercial Production",
-  "AI Production",
-  "Entertainment Events",
-];
-
-/* Bigin picklist values for POTENTIALCF3 / POTENTIALCF2 — must match exactly */
-const BUDGET_OPTIONS = [
+const BUDGETS = [
   "Below ₹25K",
   "₹25K–₹50K",
   "₹50K–₹1L",
   "₹1L–₹3L",
   "₹3L+",
-];
+] as const;
 
-const TIMELINE_OPTIONS = [
+const TIMELINES = [
   "Immediately",
   "Within 30 days",
   "1–3 months",
   "Just Exploring",
+] as const;
+
+type Country = { iso: string; name: string; dial: string; flag: string };
+
+const COUNTRIES: Country[] = [
+  { iso: "in", name: "India", dial: "+91", flag: "🇮🇳" },
+  { iso: "us", name: "United States", dial: "+1", flag: "🇺🇸" },
+  { iso: "gb", name: "United Kingdom", dial: "+44", flag: "🇬🇧" },
+  { iso: "ae", name: "United Arab Emirates", dial: "+971", flag: "🇦🇪" },
+  { iso: "sa", name: "Saudi Arabia", dial: "+966", flag: "🇸🇦" },
+  { iso: "qa", name: "Qatar", dial: "+974", flag: "🇶🇦" },
+  { iso: "kw", name: "Kuwait", dial: "+965", flag: "🇰🇼" },
+  { iso: "om", name: "Oman", dial: "+968", flag: "🇴🇲" },
+  { iso: "bh", name: "Bahrain", dial: "+973", flag: "🇧🇭" },
+  { iso: "sg", name: "Singapore", dial: "+65", flag: "🇸🇬" },
+  { iso: "my", name: "Malaysia", dial: "+60", flag: "🇲🇾" },
+  { iso: "au", name: "Australia", dial: "+61", flag: "🇦🇺" },
+  { iso: "ca", name: "Canada", dial: "+1", flag: "🇨🇦" },
+  { iso: "de", name: "Germany", dial: "+49", flag: "🇩🇪" },
+  { iso: "fr", name: "France", dial: "+33", flag: "🇫🇷" },
+  { iso: "nl", name: "Netherlands", dial: "+31", flag: "🇳🇱" },
+  { iso: "ie", name: "Ireland", dial: "+353", flag: "🇮🇪" },
+  { iso: "za", name: "South Africa", dial: "+27", flag: "🇿🇦" },
+  { iso: "nz", name: "New Zealand", dial: "+64", flag: "🇳🇿" },
+  { iso: "lk", name: "Sri Lanka", dial: "+94", flag: "🇱🇰" },
+  { iso: "np", name: "Nepal", dial: "+977", flag: "🇳🇵" },
+  { iso: "bd", name: "Bangladesh", dial: "+880", flag: "🇧🇩" },
+  { iso: "ph", name: "Philippines", dial: "+63", flag: "🇵🇭" },
+  { iso: "id", name: "Indonesia", dial: "+62", flag: "🇮🇩" },
+  { iso: "jp", name: "Japan", dial: "+81", flag: "🇯🇵" },
 ];
 
-/* Website service names -> Bigin "Service Interested In?" picklist values.
-   Bigin rejects any value that is not in the picklist, so we translate.
-   The original selection is still kept inside the Description. */
-const SERVICE_TO_BIGIN: Record<string, string> = {
-  "Visual Production": "Video Production",
-  "Movie Production": "Video Production",
-  "Corporate Films": "Video Production",
-  "Commercial Production": "Video Production",
-  "AI Production": "AI Videos",
-  "Entertainment Events": "Video Production",
-};
-
-/* =========================================================
-   VALIDATION — every field below is mandatory in BOTH forms
-   ========================================================= */
-const PHONE_PATTERN = "[+0-9][0-9\\s\\-\\(\\)]{9,17}";
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const MIN_MESSAGE_LENGTH = 10;
-
-interface LeadPayload {
-  source: "banner" | "popup";
+type Values = {
   name: string;
   company: string;
-  phone: string;
+  dialIso: string;
+  mobile: string;
   email: string;
   service: string;
   budget: string;
   timeline: string;
-  message: string;
-}
-
-const REQUIRED_FIELDS: Array<{ key: keyof LeadPayload; label: string }> = [
-  { key: "name", label: "Full Name" },
-  { key: "company", label: "Company / Brand" },
-  { key: "phone", label: "Phone / WhatsApp" },
-  { key: "email", label: "Email" },
-  { key: "service", label: "Project Type" },
-  { key: "budget", label: "Budget" },
-  { key: "timeline", label: "Start Timeline" },
-  { key: "message", label: "Project Details" },
-];
-
-/* Runs after the browser's own check, so it only catches
-   values that slipped past the HTML constraints. */
-const validateLead = (data: LeadPayload): string | null => {
-  const missing = REQUIRED_FIELDS.filter(
-    (f) => !String(data[f.key] ?? "").trim()
-  ).map((f) => f.label);
-
-  if (missing.length) {
-    return `Fill in ${missing.join(", ")} to continue.`;
-  }
-  if (data.name.trim().length < 2) {
-    return "Enter your full name.";
-  }
-  if (data.company.trim().length < 2) {
-    return "Enter your company or brand name.";
-  }
-  if (!EMAIL_RE.test(data.email.trim())) {
-    return "Enter a valid email address, like you@brand.com.";
-  }
-  if (data.phone.replace(/\D/g, "").length < 10) {
-    return "Enter a phone number with at least 10 digits.";
-  }
-  if (data.message.trim().length < MIN_MESSAGE_LENGTH) {
-    return `Tell us a bit more about the project — at least ${MIN_MESSAGE_LENGTH} characters.`;
-  }
-  return null;
+  description: string;
 };
 
-/* ---------- Service row with hover-video behaviour ---------- */
-const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+type Errors = Partial<Record<keyof Values, string>>;
 
-  const play = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = 0;
-    v.play().catch(() => {
-      /* autoplay may be blocked until user interacts once */
-    });
-  };
-  const pause = () => videoRef.current?.pause();
-
-  return (
-    <div
-      className="service-row"
-      onMouseEnter={play}
-      onMouseLeave={pause}
-      onFocus={() => videoRef.current?.play().catch(() => {})}
-      onBlur={pause}
-    >
-      <video className="service-video" ref={videoRef} muted loop playsInline preload="none">
-        <source src={video} type="video/webm" />
-      </video>
-      <div className="service-scrim"></div>
-      <span className="tc">{tc}</span>
-      <h4>{title}</h4>
-      <p>{desc}</p>
-      <span className="arrow">↗</span>
-    </div>
-  );
+const INITIAL: Values = {
+  name: "",
+  company: "",
+  dialIso: "in",
+  mobile: "",
+  email: "",
+  service: "",
+  budget: "",
+  timeline: "",
+  description: "",
 };
 
-/* ---------- Tracking (Lead Page URL + UTM) ---------- */
-interface TrackingData {
-  leadPageUrl: string;
-  utmSource: string;
-  utmMedium: string;
-  utmCampaign: string;
-  utmContent: string;
-  utmTerm: string;
-}
+const EMAIL_RE = /^([A-Za-z0-9\-._%'+/]+@[A-Za-z0-9.-]+\.[a-zA-Z]{2,22})$/;
+const PHONE_RE = /^[0-9a-zA-Z+.()\-;\s]+$/;
 
-const EMPTY_TRACKING: TrackingData = {
-  leadPageUrl: "",
-  utmSource: "",
-  utmMedium: "",
-  utmCampaign: "",
-  utmContent: "",
-  utmTerm: "",
-};
+export default function GetQuoteForm() {
+  const [values, setValues] = useState<Values>(INITIAL);
+  const [errors, setErrors] = useState<Errors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
-const TRACKING_KEY = "f21_tracking";
+  const formRef = useRef<HTMLFormElement>(null);
+  const submittedOnce = useRef(false);
 
-/* Small helper so every label carries the same required marker */
-const Req = () => (
-  <span className="req" aria-hidden="true">
-    *
-  </span>
-);
+  // Hidden tracking fields, filled from the current URL.
+  const [tracking, setTracking] = useState({
+    pageUrl: "",
+    utmCampaign: "",
+    utmSource: "",
+    utmContent: "",
+  });
 
-/* ============================ PAGE ============================ */
-export default function Home() {
-  const [scrolled, setScrolled] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [popupSuccess, setPopupSuccess] = useState(false);
-  const [bannerBtnText, setBannerBtnText] = useState("Request a Call Back");
-
-  // submission-in-progress + error state for both forms
-  const [bannerSubmitting, setBannerSubmitting] = useState(false);
-  const [popupSubmitting, setPopupSubmitting] = useState(false);
-  const [bannerError, setBannerError] = useState<string | null>(null);
-  const [popupError, setPopupError] = useState<string | null>(null);
-
-  // campaign tracking captured from the URL
-  const [tracking, setTracking] = useState<TrackingData>(EMPTY_TRACKING);
-
-  const bannerFormRef = useRef<HTMLFormElement>(null);
-  const popupFormRef = useRef<HTMLFormElement>(null);
-  const closeTimerRef = useRef<number | null>(null);
-  const bannerTimerRef = useRef<number | null>(null);
-
-  const openModal = () => setModalOpen(true);
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setPopupSuccess(false);
-    setPopupError(null);
-    popupFormRef.current?.reset();
-    popupFormRef.current?.classList.remove("was-validated");
-  };
-
-  /* header scroll state */
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  /* lock body scroll while modal is open */
-  useEffect(() => {
-    document.body.style.overflow = modalOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [modalOpen]);
-
-  /* escape key closes modal */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeModal();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
-  /* auto-open popup on page load */
-  useEffect(() => {
-    const t = window.setTimeout(() => setModalOpen(true), 700);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  /* ---------------------------------------------------------
-     Capture Lead Page URL + UTM parameters.
-     Values are stored in sessionStorage so a visitor who lands
-     on ?utm_source=google and then browses around still submits
-     the original campaign data.
-     --------------------------------------------------------- */
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const stored = window.sessionStorage.getItem(TRACKING_KEY);
-      const saved: Partial<TrackingData> = stored ? JSON.parse(stored) : {};
-
-      const pick = (key: string, fallback: string) =>
-        params.get(key) || fallback || "";
-
-      const data: TrackingData = {
-        leadPageUrl: window.location.href,
-        utmSource: pick("utm_source", saved.utmSource ?? ""),
-        utmMedium: pick("utm_medium", saved.utmMedium ?? ""),
-        utmCampaign: pick("utm_campaign", saved.utmCampaign ?? ""),
-        utmContent: pick("utm_content", saved.utmContent ?? ""),
-        utmTerm: pick("utm_term", saved.utmTerm ?? ""),
-      };
-
-      /* fall back to referrer when there is no utm_source at all */
-      if (!data.utmSource && document.referrer) {
-        try {
-          data.utmSource = new URL(document.referrer).hostname;
-        } catch {
-          /* ignore malformed referrer */
-        }
-      }
-      if (!data.utmSource) data.utmSource = "direct";
-
-      window.sessionStorage.setItem(TRACKING_KEY, JSON.stringify(data));
-      setTracking(data);
-    } catch (err) {
-      console.error("Tracking capture failed:", err);
-      setTracking({ ...EMPTY_TRACKING, leadPageUrl: window.location.href });
-    }
-  }, []);
-
-  /* scroll reveal animations */
-  useEffect(() => {
-    const revealTargets = document.querySelectorAll(
-      ".reveal, .reveal-left, .reveal-right, .reveal-scale, .stagger"
-    );
-
-    if ("IntersectionObserver" in window) {
-      const revealObserver = new IntersectionObserver(
-        (entries, obs) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("visible");
-              obs.unobserve(entry.target);
-            }
-          });
-        },
-        { threshold: 0.15, rootMargin: "0px 0px -60px 0px" }
-      );
-
-      revealTargets.forEach((el) => revealObserver.observe(el));
-      return () => revealObserver.disconnect();
-    } else {
-      revealTargets.forEach((el) => el.classList.add("visible"));
-    }
-  }, []);
-
-  /* clear pending timers on unmount */
-  useEffect(() => {
-    return () => {
-      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
-      if (bannerTimerRef.current) window.clearTimeout(bannerTimerRef.current);
-    };
-  }, []);
-
-  /* ---------------------------------------------------------
-     Sends the form payload to the Google Apps Script Web App,
-     which appends a row into the connected Google Sheet.
-     --------------------------------------------------------- */
-  const sendToSheet = async (payload: Record<string, unknown>) => {
-    if (!SHEET_ENDPOINT) {
-      console.error(
-        "NEXT_PUBLIC_SHEET_ENDPOINT is not set. Add it to your .env.local file."
-      );
-      throw new Error("Missing SHEET_ENDPOINT");
-    }
-    await fetch(SHEET_ENDPOINT, {
-      method: "POST",
-      // Apps Script web apps don't return CORS headers fetch can
-      // read, so we fire the request in no-cors mode. The row is
-      // still written to the sheet — we just can't inspect the
-      // response body here.
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
+    const params = new URLSearchParams(window.location.search);
+    setTracking({
+      pageUrl: window.location.href.slice(0, 255),
+      utmCampaign: params.get("utm_campaign") ?? "",
+      utmSource: params.get("utm_source") ?? "",
+      utmContent: params.get("utm_content") ?? "",
     });
-  };
+  }, []);
 
-  /* ---------------------------------------------------------
-     Sends the same payload to Zoho Bigin (Web to Record).
-     Zoho does not send CORS headers, so a normal fetch() can
-     never reach it from the browser. We instead build a real
-     <form> in memory and POST it into a hidden iframe — the
-     record is created in Bigin and the page never navigates.
-     --------------------------------------------------------- */
-  const sendToBigin = (payload: LeadPayload) =>
-    new Promise<void>((resolve, reject) => {
-      try {
-        /* make sure the hidden iframe exists */
-        let frame = document.getElementById(
-          BIGIN_IFRAME_NAME
-        ) as HTMLIFrameElement | null;
+  const dial =
+    COUNTRIES.find((c) => c.iso === values.dialIso)?.dial ?? "+91";
 
-        if (!frame) {
-          frame = document.createElement("iframe");
-          frame.id = BIGIN_IFRAME_NAME;
-          frame.name = BIGIN_IFRAME_NAME;
-          frame.style.display = "none";
-          frame.setAttribute("aria-hidden", "true");
-          document.body.appendChild(frame);
-        }
-
-        /* normalise the phone number to E.164-ish with the India dial code */
-        const rawPhone = payload.phone.trim();
-        const phone = rawPhone.startsWith("+")
-          ? rawPhone
-          : `+91${rawPhone.replace(/^0+/, "").replace(/\s+/g, "")}`;
-
-        /* build the Description that Bigin expects (mandatory field) */
-        const descriptionParts = [
-          payload.message.trim(),
-          `Selected service on website: ${payload.service}`,
-          `Submitted from: ${payload.source === "popup" ? "Popup enquiry form" : "Hero banner form"}`,
-        ];
-        if (tracking.utmMedium) {
-          descriptionParts.push(`UTM Medium: ${tracking.utmMedium}`);
-        }
-        if (tracking.utmTerm) {
-          descriptionParts.push(`UTM Term: ${tracking.utmTerm}`);
-        }
-
-        const fields: Record<string, string> = {
-          xnQsjsdp: BIGIN_XNQSJSDP,
-          zc_gad: "",
-          xmIwtLD: BIGIN_XMIWTLD,
-          actionType: BIGIN_ACTION_TYPE,
-          returnURL: "null",
-
-          "Potential Name": payload.name,
-          "Accounts.Account Name": payload.company.trim() || payload.name,
-          "Contacts.Mobile": phone,
-          "Contacts.Email": payload.email,
-
-          POTENTIALCF1: SERVICE_TO_BIGIN[payload.service] ?? "Video Production",
-          POTENTIALCF3: payload.budget,
-          POTENTIALCF2: payload.timeline,
-          Description: descriptionParts.join("\n"),
-
-          POTENTIALCF4: tracking.leadPageUrl,
-          POTENTIALCF7: tracking.utmCampaign,
-          POTENTIALCF5: tracking.utmSource,
-          POTENTIALCF6: tracking.utmContent,
-
-          Pipeline: BIGIN_PIPELINE,
-          Stage: BIGIN_STAGE,
-          "Lead Source": BIGIN_LEAD_SOURCE,
-        };
-
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = BIGIN_ACTION;
-        form.target = BIGIN_IFRAME_NAME;
-        form.acceptCharset = "UTF-8";
-        /* Zoho's own generated webform always POSTs as multipart/form-data.
-           Without this the request defaults to
-           application/x-www-form-urlencoded and Bigin's endpoint rejects
-           it with a 400 — this was the cause of the failed submissions. */
-        form.setAttribute("enctype", "multipart/form-data");
-        form.style.display = "none";
-
-        Object.entries(fields).forEach(([key, value]) => {
-          const input = document.createElement("input");
-          input.type = "hidden";
-          input.name = key;
-          input.value = value ?? "";
-          form.appendChild(input);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
-
-        /* the iframe is cross-origin, so we can't read its load event
-           reliably — give the POST a moment, then clean up. */
-        window.setTimeout(() => {
-          form.remove();
-          resolve();
-        }, 900);
-      } catch (err) {
-        reject(err);
-      }
+  function set<K extends keyof Values>(key: K, value: Values[K]) {
+    setValues((v) => ({ ...v, [key]: value }));
+    setErrors((e) => {
+      if (!e[key]) return e;
+      const next = { ...e };
+      delete next[key];
+      return next;
     });
+  }
 
-  /* form submit — posts to Zoho Bigin (and Google Sheets if configured) */
-  const handleSubmit = async (
-    e: React.FormEvent<HTMLFormElement>,
-    source: "banner" | "popup"
-  ) => {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const setError = source === "popup" ? setPopupError : setBannerError;
+  function validate(): Errors {
+    const e: Errors = {};
 
-    /* 1 — browser constraint validation (required / type / pattern / minlength) */
-    form.classList.add("was-validated");
-    if (!form.checkValidity()) {
-      setError("Every field is required. Complete the highlighted fields.");
-      form.reportValidity();
-      const firstInvalid = form.querySelector<HTMLElement>(":invalid");
-      firstInvalid?.focus();
+    if (!values.name.trim()) e.name = "Name cannot be empty";
+    if (!values.company.trim()) e.company = "Company cannot be empty";
+
+    if (!values.mobile.trim()) e.mobile = "Mobile cannot be empty";
+    else if (!PHONE_RE.test(values.mobile.trim()))
+      e.mobile = "Enter valid numbers";
+
+    if (!values.email.trim()) e.email = "Email cannot be empty";
+    else if (!EMAIL_RE.test(values.email.trim()))
+      e.email = "Enter valid Email";
+
+    if (!values.service) e.service = "Service Interested In? cannot be none.";
+    if (!values.budget) e.budget = "Monthly/Project Budget cannot be none.";
+    if (!values.timeline)
+      e.timeline = "When do you want to start? cannot be none.";
+    if (!values.description.trim())
+      e.description = "Tell Us About Your Requirement cannot be empty";
+
+    return e;
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const found = validate();
+    setErrors(found);
+
+    if (Object.keys(found).length > 0) {
+      event.preventDefault();
+      const firstKey = Object.keys(found)[0];
+      formRef.current
+        ?.querySelector<HTMLElement>(`[data-field="${firstKey}"]`)
+        ?.focus();
       return;
     }
 
-    /* 2 — our own check, in case anything slipped past the browser */
-    const formData = new FormData(form);
-    const payload: LeadPayload = {
-      source,
-      name: String(formData.get("name") ?? "").trim(),
-      company: String(formData.get("company") ?? "").trim(),
-      phone: String(formData.get("phone") ?? "").trim(),
-      email: String(formData.get("email") ?? "").trim(),
-      service: String(formData.get("service") ?? "").trim(),
-      budget: String(formData.get("budget") ?? "").trim(),
-      timeline: String(formData.get("timeline") ?? "").trim(),
-      message: String(formData.get("message") ?? "").trim(),
-    };
+    // Valid — let the native POST through to the hidden iframe.
+    submittedOnce.current = true;
+    setSubmitting(true);
+  }
 
-    const validationError = validateLead(payload);
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
+  function handleIframeLoad() {
+    if (!submittedOnce.current) return; // ignore the initial about:blank load
+    setSubmitting(false);
+    setSubmitted(true);
+  }
 
-    const fullPayload = {
-      ...payload,
-      leadPageUrl: tracking.leadPageUrl,
-      utmSource: tracking.utmSource,
-      utmMedium: tracking.utmMedium,
-      utmCampaign: tracking.utmCampaign,
-      utmContent: tracking.utmContent,
-      utmTerm: tracking.utmTerm,
-    };
+  function reset() {
+    submittedOnce.current = false;
+    setValues(INITIAL);
+    setErrors({});
+    setSubmitted(false);
+  }
 
-    /* Bigin is the system of record — Google Sheets is a best-effort
-       backup and must never block or fail the submission. */
-    const alsoSendToSheet = async () => {
-      if (!SHEET_ENDPOINT) return;
-      try {
-        await sendToSheet(fullPayload);
-      } catch (err) {
-        console.error("Sheet backup failed (CRM still received the lead):", err);
-      }
-    };
-
-    if (source === "popup") {
-      setPopupSubmitting(true);
-      setPopupError(null);
-      try {
-        await sendToBigin(payload);
-        await alsoSendToSheet();
-        setPopupSuccess(true);
-        form.classList.remove("was-validated");
-        closeTimerRef.current = window.setTimeout(closeModal, 2600);
-      } catch (err) {
-        console.error("Popup form submission failed:", err);
-        setPopupError("That didn't send. Check your connection and try again.");
-      } finally {
-        setPopupSubmitting(false);
-      }
-    } else {
-      setBannerSubmitting(true);
-      setBannerError(null);
-      try {
-        await sendToBigin(payload);
-        await alsoSendToSheet();
-        setBannerBtnText("Sent — Thank You!");
-        form.reset();
-        form.classList.remove("was-validated");
-        bannerTimerRef.current = window.setTimeout(
-          () => setBannerBtnText("Request a Call Back"),
-          2600
-        );
-      } catch (err) {
-        console.error("Banner form submission failed:", err);
-        setBannerError("That didn't send. Check your connection and try again.");
-      } finally {
-        setBannerSubmitting(false);
-      }
-    }
-  };
-
-  return (
-    <>
-      <style>{css}</style>
-
-      {/* ===== HEADER ===== */}
-      <header id="siteHeader" className={scrolled ? "scrolled" : ""}>
-        <a href="#top" className="logo">
-          <img src="/logo/2151-logo.png" alt="21Fiftyone logo" />
-        </a>
-        <nav>
-          <ul>
-            <li><a href="#top">Home</a></li>
-            <li><a href="#about">About</a></li>
-            <li><a href="#services">Services</a></li>
-            <li><a href="#process">Studio</a></li>
-            <li><a href="#contact">Contact</a></li>
-          </ul>
-        </nav>
-        <div className="nav-right">
-          <a
-            href="#"
-            className="btn-ghost"
-            onClick={(e) => {
-              e.preventDefault();
-              openModal();
-            }}
-          >
-            Enquire Now
-          </a>
-        </div>
-        <button className="menu-toggle" aria-label="Menu" onClick={openModal}>
-          <span></span><span></span><span></span>
-        </button>
-      </header>
-
-      {/* ===== HERO + BANNER FORM ===== */}
-      <section className="hero" id="top">
-        <video
-          className="hero-video"
-          autoPlay
-          muted
-          loop
-          playsInline
-          poster="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1600&auto=format&fit=crop"
-        >
-          <source src="/videos/banner/7011667_Film_Filming_1280x720.webm" type="video/webm" />
-        </video>
-        <div className="hero-scrim"></div>
-        <div className="container hero-grid">
-          <div className="hero-copy">
-            <span className="eyebrow">AI Production House · Luxury &amp; Editorial</span>
-            <h1>
-              We Make <span>Culture.</span>
-            </h1>
-            <p>
-              Video production company in Calicut crafting cinematic brand films, commercials,
-              reels and digital stories that connect with people and leave a lasting impact.
+  if (submitted) {
+    return (
+      <div className="wf-parent">
+        <style>{styles}</style>
+        <div className="wf-wrapper">
+          <div className="wf-form-component wf-success">
+            <div className="wf-success-mark" aria-hidden="true">
+              ✓
+            </div>
+            <h2 className="wf-header wf-header-success">Request received</h2>
+            <p className="wf-success-text">
+              Thanks, {values.name.split(" ")[0] || "there"}. Our team will
+              reach you on {dial} {values.mobile} within one business day.
             </p>
-            <div className="hero-actions">
-              <a href="#services" className="btn-solid">View Our Work</a>
-              <a href="#contact" className="btn-ghost">Connect With The Studio</a>
-            </div>
-            <div className="reel-tags">
-              <div><span>✦</span>Film Production</div>
-              <div><span>✦</span>Commercial / Ad</div>
-              <div><span>✦</span>Corporate Film</div>
-              <div><span>✦</span>Event / Experience</div>
-              <div><span>✦</span>AI Content</div>
-              <div><span>✦</span>Photography</div>
-            </div>
-          </div>
-
-          {/* BANNER ENQUIRY FORM — all fields mandatory */}
-          <form
-            className="banner-form"
-            id="bannerForm"
-            ref={bannerFormRef}
-            noValidate={false}
-            onSubmit={(e) => handleSubmit(e, "banner")}
-          >
-            <h3>Start Your Story</h3>
-            <p className="sub">
-              Tell us about your project — our studio will call you back within 24 hours.
-              <span className="req-legend">All fields are required.</span>
-            </p>
-
-            <div className="field">
-              <label htmlFor="b-name">Full Name <Req /></label>
-              <input
-                type="text"
-                id="b-name"
-                name="name"
-                placeholder="Your name"
-                autoComplete="name"
-                minLength={2}
-                maxLength={120}
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="b-company">Company / Brand <Req /></label>
-              <input
-                type="text"
-                id="b-company"
-                name="company"
-                placeholder="Your company name"
-                autoComplete="organization"
-                minLength={2}
-                maxLength={200}
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="b-phone">Phone / WhatsApp <Req /></label>
-              <input
-                type="tel"
-                id="b-phone"
-                name="phone"
-                placeholder="+91 00000 00000"
-                autoComplete="tel"
-                inputMode="tel"
-                maxLength={30}
-                pattern={PHONE_PATTERN}
-                title="Enter at least 10 digits, e.g. +91 98470 00000"
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="b-email">Email <Req /></label>
-              <input
-                type="email"
-                id="b-email"
-                name="email"
-                placeholder="you@brand.com"
-                autoComplete="email"
-                inputMode="email"
-                maxLength={100}
-                title="Enter a valid email address, e.g. you@brand.com"
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="b-service">Project Type <Req /></label>
-              <select id="b-service" name="service" defaultValue="" required>
-                <option value="" disabled>Select a service</option>
-                {SERVICE_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="b-budget">Monthly / Project Budget <Req /></label>
-                <select id="b-budget" name="budget" defaultValue="" required>
-                  <option value="" disabled>Select a budget</option>
-                  {BUDGET_OPTIONS.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="b-timeline">When do you want to start? <Req /></label>
-                <select id="b-timeline" name="timeline" defaultValue="" required>
-                  <option value="" disabled>Select a timeline</option>
-                  {TIMELINE_OPTIONS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="field">
-              <label htmlFor="b-message">Project Details <Req /></label>
-              <textarea
-                id="b-message"
-                name="message"
-                rows={3}
-                placeholder="Tell us briefly about your project..."
-                minLength={MIN_MESSAGE_LENGTH}
-                maxLength={1000}
-                title="Give us at least a sentence about the project"
-                required
-              ></textarea>
-            </div>
-
-            <button type="submit" className="btn-solid" disabled={bannerSubmitting}>
-              {bannerSubmitting ? "Sending…" : bannerBtnText}
+            <button type="button" className="wf-btn wf-btn-primary" onClick={reset}>
+              Send another request
             </button>
-
-            {bannerError && (
-              <p className="form-error" role="alert">{bannerError}</p>
-            )}
-            <p className="form-note">No spam. Just a conversation about your story.</p>
-          </form>
-        </div>
-      </section>
-
-      {/* ===== ABOUT (IMAGE SECTION) ===== */}
-      <section className="about" id="about">
-        <div className="container about-grid">
-          <div className="about-frame reveal-left">
-            <img src="/image/about-3.webp" alt="21Fiftyone behind the scenes on set" />
-            <div className="corner tl"></div>
-            <div className="corner br"></div>
-            <p className="about-tag">
-              &quot;We don&apos;t just create visuals.<br />We craft stories that stay.&quot;
-            </p>
-          </div>
-          <div className="reveal-right">
-            <span className="eyebrow">The Origin</span>
-            <h2>We Make Stories.</h2>
-            <p>
-              As a leading video production company in Calicut, we believe every story has the
-              power to inspire, connect, and make an impact. We combine cinematic creativity with
-              modern technology to create films and brand visuals that feel authentic, engaging,
-              and memorable.
-            </p>
-            <p>
-              From concept to completion, every project is crafted with passion, precision, and
-              purpose — transforming ideas into visual experiences that leave a lasting impression.
-            </p>
-            <div className="stat-row">
-              <div className="stat"><b>100+</b><span>Projects</span></div>
-              <div className="stat"><b>25+</b><span>Brands</span></div>
-              <div className="stat"><b>10+</b><span>Studio</span></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===== SERVICES (HOVER = VIDEO BACKGROUND) ===== */}
-      <section className="services" id="services">
-        <div className="container">
-          <div className="section-head reveal">
-            <div>
-              <span className="eyebrow">What We Do</span>
-              <h2>Our Core Services</h2>
-            </div>
-            <p>
-              Blending imagination, emotion and precision — to create stories that feel as powerful
-              as they look. Hover a service to preview.
-            </p>
-          </div>
-
-          <div className="service-list stagger">
-            {SERVICES.map((s) => (
-              <ServiceRow key={s.tc} {...s} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== PROCESS ===== */}
-      <section className="process" id="process">
-        <div className="container">
-          <div className="reveal">
-            <span className="eyebrow">How We Work</span>
-            <h2 style={{ fontSize: "clamp(32px,4vw,50px)", fontStyle: "italic", marginTop: "14px" }}>
-              The Process
-            </h2>
-          </div>
-          <div className="process-grid stagger">
-            <div className="process-step">
-              <div className="tc">01 · Conceive</div>
-              <h4>Understand</h4>
-              <p>
-                We understand your brand, audience, message, budget and final use case before
-                suggesting a direction.
-              </p>
-            </div>
-            <div className="process-step">
-              <div className="tc">02 · Design</div>
-              <h4>Shape</h4>
-              <p>
-                We shape the idea into a visual plan with scripts, mood references, shot flow and
-                storyboards.
-              </p>
-            </div>
-            <div className="process-step">
-              <div className="tc">03 · Produce</div>
-              <h4>Shoot</h4>
-              <p>
-                We handle the shoot with the right crew, equipment, lighting and on-location
-                coordination.
-              </p>
-            </div>
-            <div className="process-step">
-              <div className="tc">04 · Deliver</div>
-              <h4>Refine</h4>
-              <p>
-                We edit, grade and export final videos in formats suited for web, ads, reels and
-                campaigns.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===== CTA ===== */}
-      <section className="cta-strip" id="contact">
-        <div className="container reveal-scale">
-          <span className="eyebrow">Studio 2025 · Based Worldwide</span>
-          <h2>
-            Ready to Break<br />the Mold?
-          </h2>
-          <p>
-            Let&apos;s collaborate on your next masterpiece. Our studio doors are always open for the
-            brave.
-          </p>
-          <div className="cta-actions">
-            <a
-              href="#"
-              className="btn-solid"
-              onClick={(e) => {
-                e.preventDefault();
-                openModal();
-              }}
-            >
-              Connect With The Studio
-            </a>
-            <a href="#services" className="btn-ghost">View Our Work</a>
-          </div>
-        </div>
-      </section>
-
-      {/* ===== FOOTER ===== */}
-      <footer>
-        <div className="container reveal">
-          <div className="footer-grid">
-            <div className="footer-brand">
-              <a href="#top" className="logo">
-                <img src="/logo/2151-logo.png" alt="21Fiftyone logo" />
-              </a>
-              <p>Elevating brands through the art of digital alchemy and technical precision.</p>
-              <a className="mail" href="mailto:hello@21fiftyone.com">hello@21fiftyone.com</a>
-            </div>
-            <div>
-              <h5>Studio</h5>
-              <ul>
-                <li><a href="#about">About</a></li>
-                <li><a href="#process">Studio</a></li>
-                <li><a href="#">Careers</a></li>
-                <li><a href="#contact">Contact</a></li>
-              </ul>
-            </div>
-            <div>
-              <h5>Services</h5>
-              <ul>
-                <li><a href="#services">Visual Production</a></li>
-                <li><a href="#services">Movie Production</a></li>
-                <li><a href="#services">Corporate Films</a></li>
-                <li><a href="#services">AI Production</a></li>
-              </ul>
-            </div>
-            <div>
-              <h5>Policies</h5>
-              <ul>
-                <li><a href="#">Privacy Policy</a></li>
-                <li><a href="#">Terms &amp; Conditions</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="footer-bottom">
-            <span>© 2026 21FIFTYONE. All rights reserved. Thrissur / Kozhikode, IN — Est. 2006</span>
-            <div className="socials">
-              <a href="https://www.instagram.com/21fiftyone" target="_blank" rel="noopener noreferrer">Instagram</a>
-              <a href="https://www.facebook.com/share/1Aw4MkQKzk/" target="_blank" rel="noopener noreferrer">Facebook</a>
-              <a href="https://www.behance.net/mindstorycreative" target="_blank" rel="noopener noreferrer">Behance</a>
-            </div>
-          </div>
-        </div>
-      </footer>
-
-      {/* ===== FLOATING ENQUIRE BUTTON ===== */}
-      <button className="float-btn" onClick={openModal}>
-        <span className="dot"></span> Enquire Now
-      </button>
-
-      {/* ===== POPUP MODAL FORM ===== */}
-      <div
-        className={`modal-overlay${modalOpen ? " active" : ""}`}
-        id="modalOverlay"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) closeModal();
-        }}
-      >
-        <div className="modal-box">
-          <button className="modal-close" onClick={closeModal} aria-label="Close">×</button>
-
-          <div id="modalFormWrap" style={{ display: popupSuccess ? "none" : "block" }}>
-            <span className="eyebrow">Let&apos;s Create Together</span>
-            <h3>Send an Enquiry</h3>
-            <p className="sub">
-              Share a few details and our studio will get back to you shortly.
-              <span className="req-legend">All fields are required.</span>
-            </p>
-
-            {/* POPUP ENQUIRY FORM — all fields mandatory */}
-            <form
-              id="popupForm"
-              ref={popupFormRef}
-              noValidate={false}
-              onSubmit={(e) => handleSubmit(e, "popup")}
-            >
-              <div className="field-row">
-                <div className="field">
-                  <label htmlFor="p-name">Full Name <Req /></label>
-                  <input
-                    type="text"
-                    id="p-name"
-                    name="name"
-                    placeholder="Your name"
-                    autoComplete="name"
-                    minLength={2}
-                    maxLength={120}
-                    required
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="p-email">Email <Req /></label>
-                  <input
-                    type="email"
-                    id="p-email"
-                    name="email"
-                    placeholder="you@brand.com"
-                    autoComplete="email"
-                    inputMode="email"
-                    maxLength={100}
-                    title="Enter a valid email address, e.g. you@brand.com"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <label htmlFor="p-company">Company / Brand <Req /></label>
-                  <input
-                    type="text"
-                    id="p-company"
-                    name="company"
-                    placeholder="Your company name"
-                    autoComplete="organization"
-                    minLength={2}
-                    maxLength={200}
-                    required
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="p-phone">Phone / WhatsApp <Req /></label>
-                  <input
-                    type="tel"
-                    id="p-phone"
-                    name="phone"
-                    placeholder="+91 00000 00000"
-                    autoComplete="tel"
-                    inputMode="tel"
-                    maxLength={30}
-                    pattern={PHONE_PATTERN}
-                    title="Enter at least 10 digits, e.g. +91 98470 00000"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <label htmlFor="p-service">Service Interested In <Req /></label>
-                  <select id="p-service" name="service" defaultValue="" required>
-                    <option value="" disabled>Select a service</option>
-                    {SERVICE_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="p-budget">Monthly / Project Budget <Req /></label>
-                  <select id="p-budget" name="budget" defaultValue="" required>
-                    <option value="" disabled>Select a budget</option>
-                    {BUDGET_OPTIONS.map((b) => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="p-timeline">When do you want to start? <Req /></label>
-                <select id="p-timeline" name="timeline" defaultValue="" required>
-                  <option value="" disabled>Select a timeline</option>
-                  {TIMELINE_OPTIONS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="p-message">Project Details <Req /></label>
-                <textarea
-                  id="p-message"
-                  name="message"
-                  rows={3}
-                  placeholder="Tell us briefly about your project..."
-                  minLength={MIN_MESSAGE_LENGTH}
-                  maxLength={1000}
-                  title="Give us at least a sentence about the project"
-                  required
-                ></textarea>
-              </div>
-
-              <button type="submit" className="btn-solid" disabled={popupSubmitting}>
-                {popupSubmitting ? "Sending…" : "Send Enquiry"}
-              </button>
-
-              {popupError && (
-                <p className="form-error" role="alert">{popupError}</p>
-              )}
-            </form>
-          </div>
-
-          <div className={`form-success${popupSuccess ? " active" : ""}`} id="formSuccess">
-            <div className="check">✓</div>
-            <h4>Enquiry Received</h4>
-            <p>Thank you — our studio will reach out to you within 24 hours.</p>
           </div>
         </div>
       </div>
+    );
+  }
 
-      {/* ===== HIDDEN TARGET FOR THE BIGIN POST ===== */}
+  return (
+    <div className="wf-parent">
+      <style>{styles}</style>
+
+      {/* Native POST target — keeps the visitor on this page */}
       <iframe
-        id={BIGIN_IFRAME_NAME}
-        name={BIGIN_IFRAME_NAME}
-        title="Bigin submission target"
-        aria-hidden="true"
-        tabIndex={-1}
-        style={{ display: "none", width: 0, height: 0, border: 0 }}
+        name="zoho-bigin-target"
+        title="Zoho Bigin submission target"
+        style={{ display: "none" }}
+        onLoad={handleIframeLoad}
       />
-    </>
+
+      <div className="wf-wrapper">
+        <form
+          ref={formRef}
+          action={ZOHO_ACTION_URL}
+          method="POST"
+          target="zoho-bigin-target"
+          acceptCharset="UTF-8"
+          encType="multipart/form-data"
+          onSubmit={handleSubmit}
+          className="wf-form-component"
+          noValidate
+        >
+          {/* ---- Zoho system fields. Do not remove. ---- */}
+          <input type="hidden" name="xnQsjsdp" value={ZOHO_TOKENS.xnQsjsdp} readOnly />
+          <input type="hidden" name="xmIwtLD" value={ZOHO_TOKENS.xmIwtLD} readOnly />
+          <input type="hidden" name="actionType" value={ZOHO_TOKENS.actionType} readOnly />
+          <input type="hidden" name="zc_gad" value="" readOnly />
+          <input type="hidden" name="returnURL" value="null" readOnly />
+          <input type="hidden" name="Pipeline" value="Sales Pipeline Standard 2" readOnly />
+          <input type="hidden" name="Stage" value="Qualification" readOnly />
+          <input type="hidden" name="Lead Source" value="Official Website" readOnly />
+          <input type="hidden" name="POTENTIALCF4" value={tracking.pageUrl} readOnly />
+          <input type="hidden" name="POTENTIALCF7" value={tracking.utmCampaign} readOnly />
+          <input type="hidden" name="POTENTIALCF5" value={tracking.utmSource} readOnly />
+          <input type="hidden" name="POTENTIALCF6" value={tracking.utmContent} readOnly />
+          {/* Zoho reads the full number, dial code included, from this field */}
+          <input
+            type="hidden"
+            name="Contacts.Mobile"
+            value={values.mobile ? `${dial}${values.mobile}` : ""}
+            readOnly
+          />
+
+          <h1 className="wf-header">2151 Get Quote</h1>
+
+          <Field label="Name" error={errors.name} required>
+            <input
+              data-field="name"
+              name="Potential Name"
+              maxLength={120}
+              type="text"
+              className="wf-field-item wf-field-input"
+              value={values.name}
+              onChange={(e) => set("name", e.target.value)}
+            />
+          </Field>
+
+          <Field label="Company" error={errors.company} required>
+            <input
+              data-field="company"
+              name="Accounts.Account Name"
+              maxLength={200}
+              type="text"
+              className="wf-field-item wf-field-input"
+              value={values.company}
+              onChange={(e) => set("company", e.target.value)}
+            />
+          </Field>
+
+          <Field label="Mobile" error={errors.mobile} required>
+            <div className="wf-phone-group">
+              <select
+                aria-label="Country dial code"
+                className="wf-field-item wf-field-dropdown wf-dial"
+                value={values.dialIso}
+                onChange={(e) => set("dialIso", e.target.value)}
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.iso} value={c.iso}>
+                    {c.flag} {c.dial}
+                  </option>
+                ))}
+              </select>
+              <input
+                data-field="mobile"
+                maxLength={30}
+                type="tel"
+                inputMode="tel"
+                className="wf-field-item wf-field-input wf-phone-input"
+                value={values.mobile}
+                onChange={(e) => set("mobile", e.target.value)}
+              />
+            </div>
+          </Field>
+
+          <Field label="Email" error={errors.email} required>
+            <input
+              data-field="email"
+              name="Contacts.Email"
+              maxLength={100}
+              type="email"
+              className="wf-field-item wf-field-input"
+              value={values.email}
+              onChange={(e) => set("email", e.target.value)}
+            />
+          </Field>
+
+          <Field label="Service Interested In?" error={errors.service} required>
+            <Select
+              field="service"
+              name="POTENTIALCF1"
+              value={values.service}
+              options={SERVICES}
+              onChange={(v) => set("service", v)}
+            />
+          </Field>
+
+          <Field label="Monthly/Project Budget" error={errors.budget} required>
+            <Select
+              field="budget"
+              name="POTENTIALCF3"
+              value={values.budget}
+              options={BUDGETS}
+              onChange={(v) => set("budget", v)}
+            />
+          </Field>
+
+          <Field
+            label="When do you want to start?"
+            error={errors.timeline}
+            required
+          >
+            <Select
+              field="timeline"
+              name="POTENTIALCF2"
+              value={values.timeline}
+              options={TIMELINES}
+              onChange={(v) => set("timeline", v)}
+            />
+          </Field>
+
+          <Field
+            label="Tell Us About Your Requirement"
+            error={errors.description}
+            required
+          >
+            <textarea
+              data-field="description"
+              name="Description"
+              maxLength={32000}
+              className="wf-field-item wf-field-input wf-text-area-input"
+              value={values.description}
+              onChange={(e) => set("description", e.target.value)}
+            />
+          </Field>
+
+          <div className="wform-btn-wrap">
+            <button type="submit" className="wf-btn wf-btn-primary" disabled={submitting}>
+              {submitting ? "Sending…" : "Submit"}
+            </button>
+          </div>
+
+          <a
+            className="wform-poweredby-container"
+            target="_blank"
+            rel="noopener noreferrer"
+            href="https://zoho.com/bigin/?utm_source=biginwebforms&utm_medium=organic&utm_id=product"
+          >
+            <span className="wform-poweredby-label">Powered by</span>
+            <img src="https://bigin.zoho.com/images/bigin-logo-xs.svg" alt="" />
+            <span>Bigin</span>
+          </a>
+        </form>
+      </div>
+    </div>
   );
 }
 
-/* =========================================================
-   FULL CSS — original styles + required-field states
-   ========================================================= */
-const css = `
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500;1,600&family=Jost:wght@300;400;500;600;700&display=swap');
+/* ---------- small building blocks ---------- */
 
-:root{
-  --bg:#ffffff;
-  --bg-alt:#f6f6f6;
-  --card:#ffffff;
-  --line: rgba(0,0,0,0.10);
-  --ivory:#121212;
-  --muted:#6e6e6e;
-  --gold:#e2231a;
-  --gold-soft: rgba(226,35,26,0.08);
-  --gold-dim:#f3aca6;
-  --wine:#3a1f1c;
-  --radius: 2px;
-}
-*{box-sizing:border-box; margin:0; padding:0;}
-html{scroll-behavior:smooth;}
-body{
-  background:var(--bg);
-  color:var(--ivory);
-  font-family:'Jost', sans-serif;
-  font-weight:300;
-  line-height:1.6;
-  overflow-x:hidden;
-}
-a{color:inherit; text-decoration:none;}
-img{max-width:100%; display:block;}
-h1,h2,h3,h4{
-  font-family:'Cormorant Garamond', serif;
-  font-weight:500;
-  letter-spacing:0.01em;
-}
-.eyebrow{
-  font-family:'Jost', sans-serif;
-  font-size:11px;
-  letter-spacing:0.35em;
-  text-transform:uppercase;
-  color:var(--gold);
-  display:inline-flex;
-  align-items:center;
-  gap:10px;
-}
-.eyebrow::before{
-  content:"";
-  width:24px; height:1px;
-  background:var(--gold);
-}
-.container{
-  max-width:1240px;
-  margin:0 auto;
-  padding:0 32px;
-}
-section{position:relative;}
-
-/* ===== SCROLL / ENTRANCE ANIMATIONS ===== */
-.reveal{
-  opacity:0;
-  transform:translateY(44px);
-  transition:opacity .9s cubic-bezier(.19,1,.22,1), transform .9s cubic-bezier(.19,1,.22,1);
-  will-change:opacity, transform;
-}
-.reveal.visible{
-  opacity:1;
-  transform:translateY(0);
-}
-.reveal-left{
-  opacity:0;
-  transform:translateX(-50px);
-  transition:opacity .9s cubic-bezier(.19,1,.22,1), transform .9s cubic-bezier(.19,1,.22,1);
-}
-.reveal-left.visible{opacity:1; transform:translateX(0);}
-.reveal-right{
-  opacity:0;
-  transform:translateX(50px);
-  transition:opacity .9s cubic-bezier(.19,1,.22,1), transform .9s cubic-bezier(.19,1,.22,1);
-}
-.reveal-right.visible{opacity:1; transform:translateX(0);}
-.reveal-scale{
-  opacity:0;
-  transform:scale(0.94);
-  transition:opacity .8s ease, transform .8s ease;
-}
-.reveal-scale.visible{opacity:1; transform:scale(1);}
-.stagger > *{
-  opacity:0;
-  transform:translateY(30px);
-  transition:opacity .7s ease, transform .7s ease;
-}
-.stagger.visible > *{opacity:1; transform:translateY(0);}
-.stagger.visible > *:nth-child(1){transition-delay:.05s;}
-.stagger.visible > *:nth-child(2){transition-delay:.15s;}
-.stagger.visible > *:nth-child(3){transition-delay:.25s;}
-.stagger.visible > *:nth-child(4){transition-delay:.35s;}
-.stagger.visible > *:nth-child(5){transition-delay:.45s;}
-.stagger.visible > *:nth-child(6){transition-delay:.55s;}
-
-@keyframes heroFadeUp{
-  from{opacity:0; transform:translateY(36px);}
-  to{opacity:1; transform:translateY(0);}
-}
-.hero-copy .eyebrow{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) both;}
-.hero-copy h1{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) .12s both;}
-.hero-copy p{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) .24s both;}
-.hero-copy .hero-actions{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) .36s both;}
-.hero-copy .reel-tags{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) .48s both;}
-.banner-form{animation:heroFadeUp 1s cubic-bezier(.19,1,.22,1) .3s both;}
-
-@media (prefers-reduced-motion: reduce){
-  .reveal, .reveal-left, .reveal-right, .reveal-scale, .stagger > *{
-    opacity:1 !important; transform:none !important; transition:none !important;
-  }
-  .hero-copy .eyebrow, .hero-copy h1, .hero-copy p, .hero-copy .hero-actions, .hero-copy .reel-tags, .banner-form{
-    animation:none !important;
-  }
+function Field({
+  label,
+  error,
+  required,
+  children,
+}: {
+  label: string;
+  error?: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="wf-row">
+      <label className="wf-label">{label}</label>
+      <div
+        className={[
+          "wf-field",
+          required ? "wf-field-mandatory" : "",
+          error ? "wf-field-error-active" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <div className="wf-field-inner">{children}</div>
+        {error ? (
+          <div className="wf-error-parent-ele">
+            <span className="wf-field-error">{error}</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
-/* ===== NAV ===== */
-header{
-  position:fixed; top:0; left:0; right:0;
-  z-index:200;
-  display:flex; align-items:center; justify-content:space-between;
-  padding:22px 40px;
-  background:linear-gradient(to bottom, rgba(0,0,0,0.35), transparent);
-  transition:background .3s ease, padding .3s ease;
-}
-header.scrolled{
-  background:rgba(255,255,255,0.94);
-  backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--line);
-  padding:14px 40px;
-}
-.logo{
-  display:flex; align-items:center; gap:12px;
-  font-family:'Cormorant Garamond', serif;
-  font-size:24px;
-  letter-spacing:0.08em;
-}
-header .logo{
-  background:#ffffff;
-  padding:8px 16px;
-  border-radius:4px;
-}
-.logo img{height:38px; width:auto;}
-nav ul{
-  display:flex; gap:38px;
-  list-style:none;
-}
-nav a{
-  font-size:12px;
-  letter-spacing:0.18em;
-  text-transform:uppercase;
-  color:#ffffff;
-  position:relative;
-  padding-bottom:4px;
-  transition:color .3s ease;
-}
-header.scrolled nav a{color:var(--ivory);}
-nav a::after{
-  content:"";
-  position:absolute; left:0; bottom:0;
-  width:0; height:1px;
-  background:var(--gold);
-  transition:width .3s ease;
-}
-nav a:hover::after{width:100%;}
-.nav-right{display:flex; align-items:center; gap:24px;}
-.nav-right .btn-ghost{color:#ffffff; border-color:rgba(255,255,255,0.55);}
-header.scrolled .nav-right .btn-ghost{color:var(--gold); border-color:var(--gold-dim);}
-.btn-ghost{
-  border:1px solid var(--gold-dim);
-  color:var(--gold);
-  padding:11px 22px;
-  font-size:11px;
-  letter-spacing:0.2em;
-  text-transform:uppercase;
-  transition:all .3s ease;
-  white-space:nowrap;
-}
-.btn-ghost:hover{background:var(--gold); color:#ffffff !important; border-color:var(--gold) !important;}
-.btn-solid{
-  background:var(--gold);
-  color:#ffffff;
-  padding:14px 30px;
-  font-size:11px;
-  letter-spacing:0.2em;
-  text-transform:uppercase;
-  font-weight:500;
-  border:1px solid var(--gold);
-  transition:all .3s ease;
-  cursor:pointer;
-  display:inline-block;
-}
-.btn-solid:hover{background:transparent; color:var(--gold); transform:translateY(-2px);}
-.btn-solid:disabled{opacity:0.6; cursor:not-allowed; transform:none;}
-.menu-toggle{display:none; flex-direction:column; gap:5px; background:none; border:none; cursor:pointer;}
-.menu-toggle span{width:24px; height:1px; background:#ffffff; transition:background .3s ease;}
-header.scrolled .menu-toggle span{background:var(--ivory);}
-
-/* ===== HERO (VIDEO BANNER) ===== */
-.hero{
-  min-height:100vh;
-  display:flex;
-  align-items:center;
-  padding:160px 0 100px;
-  position:relative;
-  overflow:hidden;
-  background:#0b0b0c;
-}
-.hero-video{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  z-index:0;
-}
-.hero-scrim{
-  position:absolute;
-  inset:0;
-  z-index:1;
-  background:
-    linear-gradient(180deg, rgba(10,10,10,0.75) 0%, rgba(10,10,10,0.40) 42%, rgba(10,10,10,0.82) 100%),
-    linear-gradient(90deg, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.15) 55%);
-}
-.hero-grid{
-  position:relative; z-index:2;
-  display:grid;
-  grid-template-columns:1.15fr 0.85fr;
-  gap:60px;
-  align-items:start;
-}
-.hero-copy .eyebrow{margin-bottom:22px; color:var(--gold);}
-.hero-copy h1{
-  font-size:clamp(48px, 6.4vw, 92px);
-  line-height:0.98;
-  font-style:italic;
-  color:#ffffff;
-  margin-bottom:22px;
-}
-.hero-copy h1 span{color:var(--gold); font-style:normal;}
-.hero-copy p{
-  max-width:460px;
-  color:rgba(255,255,255,0.78);
-  font-size:16px;
-  margin-bottom:34px;
-}
-.hero-actions{display:flex; gap:16px; align-items:center; flex-wrap:wrap;}
-.hero-actions .btn-ghost{color:#ffffff; border-color:rgba(255,255,255,0.55);}
-.hero-actions .btn-ghost:hover{background:var(--gold); border-color:var(--gold); color:#ffffff;}
-.reel-tags{
-  margin-top:56px;
-  display:flex; flex-wrap:wrap; gap:0 28px;
-  color:rgba(255,255,255,0.65);
-  font-size:12px;
-  letter-spacing:0.15em;
-  text-transform:uppercase;
-  border-top:1px solid rgba(255,255,255,0.18);
-  padding-top:22px;
-}
-.reel-tags span{color:var(--gold); margin-right:6px;}
-
-/* ---- Banner enquiry form ---- */
-.banner-form{
-  background:#ffffff;
-  box-shadow:0 30px 70px rgba(20,18,14,0.10);
-  border:1px solid var(--line);
-  padding:38px 34px;
-  position:relative;
-  max-height:none;
-}
-.banner-form::before{
-  content:"";
-  position:absolute; top:0; left:0;
-  width:100%; height:2px;
-  background:linear-gradient(90deg, var(--gold), transparent);
-}
-.banner-form h3{
-  font-size:26px;
-  font-style:italic;
-  margin-bottom:6px;
-}
-.banner-form .sub{
-  color:var(--muted);
-  font-size:13px;
-  margin-bottom:26px;
-}
-.field{margin-bottom:16px;}
-.field-row{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:0 20px;
-}
-.field-row .field{min-width:0;}
-.field label{
-  display:block;
-  font-size:10px;
-  letter-spacing:0.18em;
-  text-transform:uppercase;
-  color:var(--muted);
-  margin-bottom:8px;
-}
-.field input,
-.field select,
-.field textarea{
-  width:100%;
-  background:transparent;
-  border:none;
-  border-bottom:1px solid var(--line);
-  color:var(--ivory);
-  font-family:'Jost', sans-serif;
-  font-size:14px;
-  padding:9px 2px;
-  outline:none;
-  transition:border-color .3s ease;
-}
-.field select option{background:#ffffff; color:var(--ivory);}
-.field input:focus,
-.field select:focus,
-.field textarea:focus{border-color:var(--gold);}
-.field input:focus-visible,
-.field select:focus-visible,
-.field textarea:focus-visible{outline:2px solid var(--gold); outline-offset:3px;}
-.field textarea{resize:vertical; min-height:74px;}
-.banner-form .btn-solid{width:100%; text-align:center; margin-top:6px;}
-.form-note{
-  font-size:11px;
-  color:var(--muted);
-  margin-top:14px;
-  text-align:center;
-  letter-spacing:0.03em;
+function Select({
+  field,
+  name,
+  value,
+  options,
+  onChange,
+}: {
+  field: string;
+  name: string;
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <select
+      data-field={field}
+      name={name}
+      className="wf-field-item wf-field-dropdown"
+      value={value || "-None-"}
+      onChange={(e) => onChange(e.target.value === "-None-" ? "" : e.target.value)}
+    >
+      <option value="-None-">-None-</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
 }
 
-/* ===== REQUIRED FIELD STATES ===== */
-.req{
-  color:var(--gold);
-  font-weight:600;
-  margin-left:3px;
-}
-.req-legend{
-  display:block;
-  margin-top:6px;
-  font-size:11px;
-  letter-spacing:0.16em;
-  text-transform:uppercase;
-  color:var(--gold);
-}
-/* highlight empty/invalid fields only after the user has interacted
-   or after a failed submit — never on first paint */
-.field input:user-invalid,
-.field select:user-invalid,
-.field textarea:user-invalid{
-  border-bottom-color:var(--gold);
-  background:var(--gold-soft);
-}
-form.was-validated .field input:invalid,
-form.was-validated .field select:invalid,
-form.was-validated .field textarea:invalid{
-  border-bottom-color:var(--gold);
-  background:var(--gold-soft);
-}
-form.was-validated .field input:valid,
-form.was-validated .field select:valid,
-form.was-validated .field textarea:valid{
-  border-bottom-color:rgba(0,0,0,0.28);
-}
-.form-error{
-  margin-top:14px;
-  padding:10px 12px;
-  border-left:2px solid var(--gold);
-  background:var(--gold-soft);
-  color:var(--gold);
-  font-size:12px;
-  line-height:1.5;
-  letter-spacing:0.02em;
-}
+/* ---------- styles (ported from the Zoho embed) ---------- */
 
-/* ===== ABOUT (IMAGE SECTION) ===== */
-.about{
-  padding:130px 0;
-  border-top:1px solid var(--line);
+const styles = `
+.wf-parent {
+  padding: 30px 0;
+  min-height: 100%;
+  box-sizing: border-box;
+  background-color: #EAEEF2;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 15px;
+  color: #222;
 }
-.about-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:70px;
-  align-items:center;
+.wf-parent * { box-sizing: border-box; }
+.wf-wrapper {
+  width: 100%;
+  max-width: 700px;
+  margin: auto;
+  border-radius: 10px;
+  background-color: #fff;
+  box-shadow: 0 0 2px 0 #00000033;
 }
-.about h2{
-  font-size:clamp(34px,4vw,52px);
-  font-style:italic;
-  line-height:1.1;
-  margin:16px 0 24px;
+.wf-form-component { padding: 30px 40px 60px; position: relative; }
+.wf-header {
+  font-size: 22px;
+  font-weight: bold;
+  padding-bottom: 35px;
+  margin: 0;
+  word-break: break-word;
 }
-.about p{color:var(--muted); font-size:15px; margin-bottom:18px; max-width:520px;}
-.stat-row{
-  display:flex;
-  gap:48px;
-  margin-top:36px;
-  padding-top:30px;
-  border-top:1px solid var(--line);
+.wf-row { margin-bottom: 20px; }
+.wf-label { display: block; padding: 7px 0; word-break: break-word; }
+.wf-field { position: relative; text-align: left; border: 0; }
+.wf-field-inner { position: relative; display: flex; flex: 1; }
+.wf-field-mandatory .wf-field-inner::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: #ff6a6a;
+  border-start-start-radius: 4px;
+  border-end-start-radius: 4px;
+  z-index: 2;
 }
-.stat b{
-  display:block;
-  font-family:'Cormorant Garamond', serif;
-  font-size:44px;
-  color:var(--gold);
-  font-style:italic;
+.wf-field-input, .wf-field-dropdown {
+  width: 100%;
+  border: 1px solid #BDC8D3;
+  border-radius: 4px;
+  padding: 10px 15px;
+  min-height: 38px;
+  font-size: 15px;
+  font-family: inherit;
+  background-color: #fff;
+  color: #222;
 }
-.stat span{font-size:11px; letter-spacing:0.15em; text-transform:uppercase; color:var(--muted);}
-
-.about-frame{
-  aspect-ratio:4/5;
-  position:relative;
-  overflow:hidden;
-  border:1px solid var(--line);
-  display:flex; align-items:flex-end;
-  padding:26px;
-  background:#f0ede4;
+.wf-field-input:focus, .wf-field-dropdown:focus { border: 1px solid #1980d8; outline: none; }
+.wf-field-dropdown {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg fill='black' height='34' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
+  background-repeat: no-repeat;
+  background-position-x: 99%;
+  background-position-y: center;
+  cursor: pointer;
 }
-.about-frame img{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  z-index:0;
-  transition:transform .8s ease;
+.wf-text-area-input { resize: vertical; height: 100px; min-height: 100px; max-height: 200px; }
+.wf-phone-group { display: flex; flex: 1; }
+.wf-dial {
+  width: auto;
+  min-width: 105px;
+  flex: 0 0 auto;
+  border-radius: 4px 0 0 4px;
+  border-right: 0;
+  padding-right: 26px;
 }
-.about-frame:hover img{transform:scale(1.06);}
-.about-frame::after{
-  content:"";
-  position:absolute; inset:0;
-  background:linear-gradient(180deg, transparent 45%, rgba(8,8,8,0.72) 100%);
-  z-index:1;
-  pointer-events:none;
+.wf-phone-input { border-radius: 0 4px 4px 0; }
+.wf-field-error-active .wf-field-input,
+.wf-field-error-active .wf-field-dropdown {
+  border: 1px solid #FD6B6D;
+  box-shadow: 0 0 1px 1px #F4A2A2;
 }
-.about-frame .corner{
-  position:absolute; width:22px; height:22px;
-  border:1px solid var(--gold);
-  z-index:2;
+.wf-error-parent-ele { display: flex; justify-content: flex-end; }
+.wf-field-error {
+  color: #FF5050;
+  font-size: 12px;
+  margin-top: 4px;
+  animation: wfShake 0.82s cubic-bezier(.36,.07,.19,.97) both;
 }
-.about-frame .tl{top:14px; left:14px; border-right:none; border-bottom:none;}
-.about-frame .br{bottom:14px; right:14px; border-left:none; border-top:none;}
-.about-frame .about-tag{
-  position:relative;
-  z-index:2;
-  color:#ffffff;
-  font-family:'Cormorant Garamond', serif;
-  font-style:italic;
-  font-size:20px;
-  line-height:1.3;
+@keyframes wfShake {
+  10%,90% { transform: translate3d(-1px,0,0); }
+  20%,80% { transform: translate3d(2px,0,0); }
+  30%,50%,70% { transform: translate3d(-4px,0,0); }
+  40%,60% { transform: translate3d(4px,0,0); }
 }
-
-/* ===== SERVICES (HOVER VIDEO) ===== */
-.services{
-  padding:130px 0;
-  background:var(--bg-alt);
-  border-top:1px solid var(--line);
-  border-bottom:1px solid var(--line);
+@media (prefers-reduced-motion: reduce) {
+  .wf-field-error { animation: none; }
 }
-.section-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-end;
-  gap:40px;
-  margin-bottom:64px;
-  flex-wrap:wrap;
+.wform-btn-wrap { display: flex; margin-top: 40px; align-items: center; justify-content: flex-start; }
+.wf-btn {
+  padding: 10px 20px;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: bold;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
 }
-.section-head h2{
-  font-size:clamp(32px,4vw,50px);
-  font-style:italic;
-  margin-top:14px;
+.wf-btn-primary { background-color: #1980d8; color: #fff; border-color: #1980d8; }
+.wf-btn-primary:hover:not(:disabled) { background-color: #1468b0; }
+.wf-btn:disabled { opacity: .6; cursor: default; }
+.wf-btn:focus-visible { outline: 2px solid #0b4f8a; outline-offset: 2px; }
+.wform-poweredby-container {
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-start-end-radius: 10px;
+  border-end-start-radius: 10px;
+  background-color: #23384F;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 8px;
+  text-decoration: none;
 }
-.section-head p{color:var(--muted); max-width:340px; font-size:14px;}
-.service-list{border-top:1px solid var(--line);}
-.service-row{
-  position:relative;
-  overflow:hidden;
-  display:grid;
-  grid-template-columns:90px 1fr 1fr 40px;
-  gap:24px;
-  align-items:center;
-  min-height:220px;
-  padding:64px 28px;
-  border-bottom:1px solid var(--line);
-  isolation:isolate;
-  transition:padding .35s ease;
+.wform-poweredby-label { color: #C5D4E5; }
+.wf-success { text-align: center; padding-bottom: 40px; }
+.wf-success-mark {
+  width: 52px;
+  height: 52px;
+  line-height: 52px;
+  margin: 10px auto 20px;
+  border-radius: 50%;
+  background: #E6F4EC;
+  color: #2e9e6b;
+  font-size: 26px;
 }
-.service-row > *{position:relative; z-index:2;}
-.service-video{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  z-index:0;
-  opacity:0;
-  transform:scale(1.04);
-  transition:opacity .5s ease, transform .6s ease;
-  pointer-events:none;
-}
-.service-scrim{
-  position:absolute;
-  inset:0;
-  z-index:1;
-  background:linear-gradient(90deg, rgba(6,6,6,0.82) 0%, rgba(6,6,6,0.45) 65%, rgba(6,6,6,0.20) 100%);
-  opacity:0;
-  transition:opacity .45s ease;
-  pointer-events:none;
-}
-.service-row:hover{padding-left:38px;}
-.service-row:hover .service-video{opacity:1; transform:scale(1);}
-.service-row:hover .service-scrim{opacity:1;}
-.service-row .tc{
-  font-family:'Jost';
-  font-size:12px;
-  color:var(--gold);
-  letter-spacing:0.1em;
-  transition:color .35s ease;
-}
-.service-row h4{
-  font-size:28px;
-  font-style:italic;
-  font-weight:500;
-  transition:color .35s ease;
-}
-.service-row p{color:var(--muted); font-size:14px; transition:color .35s ease;}
-.service-row .arrow{
-  font-size:22px; color:var(--gold);
-  transition:transform .3s ease, color .35s ease;
-}
-.service-row:hover .arrow{transform:translate(4px,-4px);}
-.service-row:hover .tc{color:#ffffff;}
-.service-row:hover h4{color:#ffffff;}
-.service-row:hover p{color:rgba(255,255,255,0.82);}
-.service-row:hover .arrow{color:#ffffff;}
-
-/* ===== PROCESS ===== */
-.process{padding:130px 0;}
-.process-grid{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:1px;
-  background:var(--line);
-  border:1px solid var(--line);
-  margin-top:60px;
-}
-.process-step{
-  background:var(--bg);
-  padding:40px 30px;
-  transition:background .35s ease, transform .35s ease;
-}
-.process-step:hover{background:var(--gold-soft); transform:translateY(-6px);}
-.process-step .tc{
-  font-family:'Cormorant Garamond', serif;
-  font-style:italic;
-  color:var(--gold);
-  font-size:15px;
-  margin-bottom:30px;
-}
-.process-step h4{font-size:22px; margin-bottom:14px; letter-spacing:0.05em;}
-.process-step p{color:var(--muted); font-size:13.5px;}
-
-/* ===== CTA STRIP ===== */
-.cta-strip{
-  padding:140px 0;
-  text-align:center;
-  background:
-    radial-gradient(ellipse 70% 90% at 50% 0%, rgba(226,35,26,0.08), transparent 65%),
-    var(--bg-alt);
-  border-top:1px solid var(--line);
-  border-bottom:1px solid var(--line);
-}
-.cta-strip .eyebrow{justify-content:center;}
-.cta-strip .eyebrow::before{display:none;}
-.cta-strip h2{
-  font-size:clamp(38px,6vw,72px);
-  font-style:italic;
-  max-width:840px;
-  margin:22px auto 26px;
-  line-height:1.05;
-}
-.cta-strip p{color:var(--muted); max-width:480px; margin:0 auto 40px; font-size:15px;}
-.cta-actions{display:flex; gap:18px; justify-content:center; flex-wrap:wrap;}
-
-/* ===== FOOTER ===== */
-footer{padding:90px 0 30px;}
-.footer-grid{
-  display:grid;
-  grid-template-columns:1.4fr 1fr 1fr 1fr;
-  gap:40px;
-  padding-bottom:60px;
-  border-bottom:1px solid var(--line);
-}
-.footer-brand .logo{margin-bottom:18px;}
-.footer-brand p{color:var(--muted); font-size:13.5px; max-width:300px; margin-bottom:18px;}
-.footer-brand a.mail{color:var(--gold); font-size:14px;}
-footer h5{
-  font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
-  color:var(--muted); margin-bottom:20px;
-}
-footer ul{list-style:none;}
-footer li{margin-bottom:12px;}
-footer ul a{font-size:13.5px; color:var(--ivory); opacity:0.85; transition:opacity .25s ease, color .25s ease;}
-footer ul a:hover{color:var(--gold); opacity:1;}
-.footer-bottom{
-  display:flex; justify-content:space-between; align-items:center;
-  padding-top:26px;
-  font-size:12px;
-  color:var(--muted);
-  flex-wrap:wrap; gap:12px;
-}
-.socials{display:flex; gap:18px;}
-.socials a{transition:color .25s ease;}
-.socials a:hover{color:var(--gold);}
-
-/* ===== FLOATING ENQUIRE BUTTON ===== */
-.float-btn{
-  position:fixed;
-  right:28px; bottom:28px;
-  z-index:150;
-  background:var(--gold);
-  color:#ffffff;
-  border:none;
-  padding:16px 26px;
-  font-family:'Jost';
-  font-size:11px;
-  letter-spacing:0.2em;
-  text-transform:uppercase;
-  font-weight:600;
-  cursor:pointer;
-  display:flex; align-items:center; gap:10px;
-  box-shadow:0 10px 30px rgba(226,35,26,0.35);
-  transition:transform .25s ease, background .25s ease;
-}
-.float-btn:hover{transform:translateY(-3px); background:#b81b14;}
-.float-btn .dot{
-  width:7px; height:7px; border-radius:50%;
-  background:#ffffff;
-  animation:pulse 1.6s infinite;
-}
-@keyframes pulse{
-  0%,100%{opacity:1;} 50%{opacity:0.25;}
-}
-
-/* ===== MODAL POPUP ===== */
-.modal-overlay{
-  position:fixed; inset:0;
-  background:rgba(6,6,7,0.82);
-  backdrop-filter:blur(6px);
-  z-index:300;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  opacity:0;
-  pointer-events:none;
-  transition:opacity .35s ease;
-  padding:20px;
-}
-.modal-overlay.active{opacity:1; pointer-events:auto;}
-.modal-box{
-  background:#ffffff;
-  border:1px solid var(--line);
-  box-shadow:0 30px 80px rgba(20,18,14,0.18);
-  width:100%;
-  max-width:600px;
-  padding:50px 56px;
-  position:relative;
-  transform:translateY(24px) scale(0.98);
-  transition:transform .35s ease;
-  max-height:90vh;
-  overflow-y:auto;
-}
-.modal-overlay.active .modal-box{transform:translateY(0) scale(1);}
-.modal-box::before{
-  content:"";
-  position:absolute; top:0; left:0;
-  width:100%; height:2px;
-  background:linear-gradient(90deg, var(--gold), transparent);
-}
-.modal-close{
-  position:absolute; top:20px; right:20px;
-  background:none; border:none;
-  color:var(--muted);
-  font-size:22px;
-  cursor:pointer;
-  line-height:1;
-  transition:color .2s ease, transform .2s ease;
-}
-.modal-close:hover{color:var(--gold); transform:rotate(90deg);}
-.modal-box .eyebrow{margin-bottom:14px;}
-.modal-box h3{
-  font-size:32px;
-  font-style:italic;
-  margin-bottom:8px;
-}
-.modal-box .sub{color:var(--muted); font-size:13.5px; margin-bottom:28px;}
-.modal-box .btn-solid{width:100%; text-align:center; margin-top:8px;}
-.form-success{
-  display:none;
-  text-align:center;
-  padding:30px 0;
-}
-.form-success.active{display:block;}
-.form-success .check{
-  width:56px; height:56px;
-  border:1px solid var(--gold);
-  border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  margin:0 auto 20px;
-  color:var(--gold);
-  font-size:24px;
-}
-.form-success h4{font-size:24px; font-style:italic; margin-bottom:8px;}
-.form-success p{color:var(--muted); font-size:13.5px;}
-
-/* ===== RESPONSIVE ===== */
-@media(max-width:960px){
-  .hero-grid{grid-template-columns:1fr;}
-  .about-grid{grid-template-columns:1fr;}
-  .about-frame{aspect-ratio:16/9; order:-1;}
-  .process-grid{grid-template-columns:repeat(2,1fr);}
-  .footer-grid{grid-template-columns:1fr 1fr;}
-  .service-row{grid-template-columns:50px 1fr 24px; padding:48px 18px; min-height:180px;}
-  .service-row p{display:none;}
-}
-@media(max-width:720px){
-  header{padding:18px 20px;}
-  nav, .nav-right .btn-ghost{display:none;}
-  .menu-toggle{display:flex;}
-  .container{padding:0 20px;}
-  .hero{padding:130px 0 70px;}
-  .hero-copy p{max-width:100%;}
-  .stat-row{flex-wrap:wrap; gap:28px;}
-  .process-grid{grid-template-columns:1fr;}
-  .footer-grid{grid-template-columns:1fr;}
-  .float-btn{right:16px; bottom:16px; padding:14px 20px; font-size:10px;}
-  .modal-box{padding:36px 24px;}
-  .service-row{min-height:160px; padding:38px 16px;}
-  .banner-form{padding:30px 22px;}
-  .field-row{grid-template-columns:1fr;}
-  .about{padding:90px 0;}
-  .services{padding:90px 0;}
-  .process{padding:90px 0;}
-  .cta-strip{padding:100px 0;}
-  footer{padding:70px 0 24px;}
-}
-@media(max-width:480px){
-  .hero-copy h1{font-size:clamp(38px,11vw,56px);}
-  .logo img{height:30px;}
-  header .logo{padding:6px 12px;}
-  .hero-actions{flex-direction:column; align-items:stretch;}
-  .hero-actions a{text-align:center;}
-  .reel-tags{gap:8px 18px; font-size:11px;}
-  .cta-actions{flex-direction:column; align-items:stretch;}
-  .cta-actions a{text-align:center;}
-  .stat-row{gap:20px;}
-  .stat b{font-size:34px;}
-  .footer-bottom{flex-direction:column; align-items:flex-start;}
-  .modal-box{padding:30px 18px;}
-}
-@media (prefers-reduced-motion: reduce){
-  *{animation:none !important; transition:none !important;}
-}
-@media (hover:none){
-  /* touch devices: no hover video trigger, just keep static row */
-  .service-video, .service-scrim{display:none;}
+.wf-header-success { padding-bottom: 10px; }
+.wf-success-text { margin: 0 0 28px; color: #515159; line-height: 1.5; }
+@media screen and (max-width: 590px) {
+  .wf-parent { padding: 20px 0; }
+  .wf-wrapper { width: calc(100% - 40px); border-radius: 8px; }
+  .wf-form-component { padding: 20px 20px 60px; }
+  .wf-dial { min-width: 92px; }
 }
 `;
