@@ -108,6 +108,64 @@ const SERVICE_TO_BIGIN: Record<string, string> = {
   "Entertainment Events": "Video Production",
 };
 
+/* =========================================================
+   VALIDATION — every field below is mandatory in BOTH forms
+   ========================================================= */
+const PHONE_PATTERN = "[+0-9][0-9\\s\\-\\(\\)]{9,17}";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const MIN_MESSAGE_LENGTH = 10;
+
+interface LeadPayload {
+  source: "banner" | "popup";
+  name: string;
+  company: string;
+  phone: string;
+  email: string;
+  service: string;
+  budget: string;
+  timeline: string;
+  message: string;
+}
+
+const REQUIRED_FIELDS: Array<{ key: keyof LeadPayload; label: string }> = [
+  { key: "name", label: "Full Name" },
+  { key: "company", label: "Company / Brand" },
+  { key: "phone", label: "Phone / WhatsApp" },
+  { key: "email", label: "Email" },
+  { key: "service", label: "Project Type" },
+  { key: "budget", label: "Budget" },
+  { key: "timeline", label: "Start Timeline" },
+  { key: "message", label: "Project Details" },
+];
+
+/* Runs after the browser's own check, so it only catches
+   values that slipped past the HTML constraints. */
+const validateLead = (data: LeadPayload): string | null => {
+  const missing = REQUIRED_FIELDS.filter(
+    (f) => !String(data[f.key] ?? "").trim()
+  ).map((f) => f.label);
+
+  if (missing.length) {
+    return `Fill in ${missing.join(", ")} to continue.`;
+  }
+  if (data.name.trim().length < 2) {
+    return "Enter your full name.";
+  }
+  if (data.company.trim().length < 2) {
+    return "Enter your company or brand name.";
+  }
+  if (!EMAIL_RE.test(data.email.trim())) {
+    return "Enter a valid email address, like you@brand.com.";
+  }
+  if (data.phone.replace(/\D/g, "").length < 10) {
+    return "Enter a phone number with at least 10 digits.";
+  }
+  if (data.message.trim().length < MIN_MESSAGE_LENGTH) {
+    return `Tell us a bit more about the project — at least ${MIN_MESSAGE_LENGTH} characters.`;
+  }
+  return null;
+};
+
 /* ---------- Service row with hover-video behaviour ---------- */
 const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -163,6 +221,13 @@ const EMPTY_TRACKING: TrackingData = {
 
 const TRACKING_KEY = "f21_tracking";
 
+/* Small helper so every label carries the same required marker */
+const Req = () => (
+  <span className="req" aria-hidden="true">
+    *
+  </span>
+);
+
 /* ============================ PAGE ============================ */
 export default function Home() {
   const [scrolled, setScrolled] = useState(false);
@@ -170,15 +235,16 @@ export default function Home() {
   const [popupSuccess, setPopupSuccess] = useState(false);
   const [bannerBtnText, setBannerBtnText] = useState("Request a Call Back");
 
-  // NEW: submission-in-progress + error state for both forms
+  // submission-in-progress + error state for both forms
   const [bannerSubmitting, setBannerSubmitting] = useState(false);
   const [popupSubmitting, setPopupSubmitting] = useState(false);
-  const [bannerError, setBannerError] = useState(false);
-  const [popupError, setPopupError] = useState(false);
+  const [bannerError, setBannerError] = useState<string | null>(null);
+  const [popupError, setPopupError] = useState<string | null>(null);
 
-  // NEW: campaign tracking captured from the URL
+  // campaign tracking captured from the URL
   const [tracking, setTracking] = useState<TrackingData>(EMPTY_TRACKING);
 
+  const bannerFormRef = useRef<HTMLFormElement>(null);
   const popupFormRef = useRef<HTMLFormElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const bannerTimerRef = useRef<number | null>(null);
@@ -188,8 +254,9 @@ export default function Home() {
   const closeModal = () => {
     setModalOpen(false);
     setPopupSuccess(false);
-    setPopupError(false);
+    setPopupError(null);
     popupFormRef.current?.reset();
+    popupFormRef.current?.classList.remove("was-validated");
   };
 
   /* header scroll state */
@@ -328,17 +395,7 @@ export default function Home() {
      <form> in memory and POST it into a hidden iframe — the
      record is created in Bigin and the page never navigates.
      --------------------------------------------------------- */
-  const sendToBigin = (payload: {
-    source: string;
-    name: string;
-    company: string;
-    phone: string;
-    email: string;
-    service: string;
-    budget: string;
-    timeline: string;
-    message: string;
-  }) =>
+  const sendToBigin = (payload: LeadPayload) =>
     new Promise<void>((resolve, reject) => {
       try {
         /* make sure the hidden iframe exists */
@@ -363,7 +420,7 @@ export default function Home() {
 
         /* build the Description that Bigin expects (mandatory field) */
         const descriptionParts = [
-          payload.message?.trim() || "No additional details provided.",
+          payload.message.trim(),
           `Selected service on website: ${payload.service}`,
           `Submitted from: ${payload.source === "popup" ? "Popup enquiry form" : "Hero banner form"}`,
         ];
@@ -382,7 +439,7 @@ export default function Home() {
           returnURL: "null",
 
           "Potential Name": payload.name,
-          "Accounts.Account Name": payload.company?.trim() || payload.name,
+          "Accounts.Account Name": payload.company.trim() || payload.name,
           "Contacts.Mobile": phone,
           "Contacts.Email": payload.email,
 
@@ -406,6 +463,11 @@ export default function Home() {
         form.action = BIGIN_ACTION;
         form.target = BIGIN_IFRAME_NAME;
         form.acceptCharset = "UTF-8";
+        /* Zoho's own generated webform always POSTs as multipart/form-data.
+           Without this the request defaults to
+           application/x-www-form-urlencoded and Bigin's endpoint rejects
+           it with a 400 — this was the cause of the failed submissions. */
+        form.setAttribute("enctype", "multipart/form-data");
         form.style.display = "none";
 
         Object.entries(fields).forEach(([key, value]) => {
@@ -437,18 +499,40 @@ export default function Home() {
   ) => {
     e.preventDefault();
     const form = e.currentTarget;
-    const formData = new FormData(form);
+    const setError = source === "popup" ? setPopupError : setBannerError;
 
-    const payload = {
+    /* 1 — browser constraint validation (required / type / pattern / minlength) */
+    form.classList.add("was-validated");
+    if (!form.checkValidity()) {
+      setError("Every field is required. Complete the highlighted fields.");
+      form.reportValidity();
+      const firstInvalid = form.querySelector<HTMLElement>(":invalid");
+      firstInvalid?.focus();
+      return;
+    }
+
+    /* 2 — our own check, in case anything slipped past the browser */
+    const formData = new FormData(form);
+    const payload: LeadPayload = {
       source,
-      name: String(formData.get("name") ?? ""),
-      company: String(formData.get("company") ?? ""),
-      phone: String(formData.get("phone") ?? ""),
-      email: String(formData.get("email") ?? ""),
-      service: String(formData.get("service") ?? ""),
-      budget: String(formData.get("budget") ?? ""),
-      timeline: String(formData.get("timeline") ?? ""),
-      message: String(formData.get("message") ?? ""),
+      name: String(formData.get("name") ?? "").trim(),
+      company: String(formData.get("company") ?? "").trim(),
+      phone: String(formData.get("phone") ?? "").trim(),
+      email: String(formData.get("email") ?? "").trim(),
+      service: String(formData.get("service") ?? "").trim(),
+      budget: String(formData.get("budget") ?? "").trim(),
+      timeline: String(formData.get("timeline") ?? "").trim(),
+      message: String(formData.get("message") ?? "").trim(),
+    };
+
+    const validationError = validateLead(payload);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const fullPayload = {
+      ...payload,
       leadPageUrl: tracking.leadPageUrl,
       utmSource: tracking.utmSource,
       utmMedium: tracking.utmMedium,
@@ -462,7 +546,7 @@ export default function Home() {
     const alsoSendToSheet = async () => {
       if (!SHEET_ENDPOINT) return;
       try {
-        await sendToSheet(payload);
+        await sendToSheet(fullPayload);
       } catch (err) {
         console.error("Sheet backup failed (CRM still received the lead):", err);
       }
@@ -470,33 +554,35 @@ export default function Home() {
 
     if (source === "popup") {
       setPopupSubmitting(true);
-      setPopupError(false);
+      setPopupError(null);
       try {
         await sendToBigin(payload);
         await alsoSendToSheet();
         setPopupSuccess(true);
+        form.classList.remove("was-validated");
         closeTimerRef.current = window.setTimeout(closeModal, 2600);
       } catch (err) {
         console.error("Popup form submission failed:", err);
-        setPopupError(true);
+        setPopupError("That didn't send. Check your connection and try again.");
       } finally {
         setPopupSubmitting(false);
       }
     } else {
       setBannerSubmitting(true);
-      setBannerError(false);
+      setBannerError(null);
       try {
         await sendToBigin(payload);
         await alsoSendToSheet();
         setBannerBtnText("Sent — Thank You!");
         form.reset();
+        form.classList.remove("was-validated");
         bannerTimerRef.current = window.setTimeout(
           () => setBannerBtnText("Request a Call Back"),
           2600
         );
       } catch (err) {
         console.error("Banner form submission failed:", err);
-        setBannerError(true);
+        setBannerError("That didn't send. Check your connection and try again.");
       } finally {
         setBannerSubmitting(false);
       }
@@ -575,65 +661,124 @@ export default function Home() {
             </div>
           </div>
 
-          {/* BANNER ENQUIRY FORM */}
-          <form className="banner-form" id="bannerForm" onSubmit={(e) => handleSubmit(e, "banner")}>
+          {/* BANNER ENQUIRY FORM — all fields mandatory */}
+          <form
+            className="banner-form"
+            id="bannerForm"
+            ref={bannerFormRef}
+            noValidate={false}
+            onSubmit={(e) => handleSubmit(e, "banner")}
+          >
             <h3>Start Your Story</h3>
             <p className="sub">
               Tell us about your project — our studio will call you back within 24 hours.
+              <span className="req-legend">All fields are required.</span>
             </p>
 
             <div className="field">
-              <label htmlFor="b-name">Full Name</label>
-              <input type="text" id="b-name" name="name" placeholder="Your name" required />
+              <label htmlFor="b-name">Full Name <Req /></label>
+              <input
+                type="text"
+                id="b-name"
+                name="name"
+                placeholder="Your name"
+                autoComplete="name"
+                minLength={2}
+                maxLength={120}
+                required
+              />
             </div>
             <div className="field">
-              <label htmlFor="b-company">Company / Brand</label>
-              <input type="text" id="b-company" name="company" placeholder="Your company name" required />
+              <label htmlFor="b-company">Company / Brand <Req /></label>
+              <input
+                type="text"
+                id="b-company"
+                name="company"
+                placeholder="Your company name"
+                autoComplete="organization"
+                minLength={2}
+                maxLength={200}
+                required
+              />
             </div>
             <div className="field">
-              <label htmlFor="b-phone">Phone / WhatsApp</label>
-              <input type="tel" id="b-phone" name="phone" placeholder="+91 00000 00000" required />
+              <label htmlFor="b-phone">Phone / WhatsApp <Req /></label>
+              <input
+                type="tel"
+                id="b-phone"
+                name="phone"
+                placeholder="+91 00000 00000"
+                autoComplete="tel"
+                inputMode="tel"
+                maxLength={30}
+                pattern={PHONE_PATTERN}
+                title="Enter at least 10 digits, e.g. +91 98470 00000"
+                required
+              />
             </div>
             <div className="field">
-              <label htmlFor="b-email">Email</label>
-              <input type="email" id="b-email" name="email" placeholder="you@brand.com" required />
+              <label htmlFor="b-email">Email <Req /></label>
+              <input
+                type="email"
+                id="b-email"
+                name="email"
+                placeholder="you@brand.com"
+                autoComplete="email"
+                inputMode="email"
+                maxLength={100}
+                title="Enter a valid email address, e.g. you@brand.com"
+                required
+              />
             </div>
             <div className="field">
-              <label htmlFor="b-service">Project Type</label>
+              <label htmlFor="b-service">Project Type <Req /></label>
               <select id="b-service" name="service" defaultValue="" required>
                 <option value="" disabled>Select a service</option>
                 {SERVICE_OPTIONS.map((s) => (
-                  <option key={s}>{s}</option>
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </select>
             </div>
             <div className="field-row">
               <div className="field">
-                <label htmlFor="b-budget">Monthly / Project Budget</label>
+                <label htmlFor="b-budget">Monthly / Project Budget <Req /></label>
                 <select id="b-budget" name="budget" defaultValue="" required>
                   <option value="" disabled>Select a budget</option>
                   {BUDGET_OPTIONS.map((b) => (
-                    <option key={b}>{b}</option>
+                    <option key={b} value={b}>{b}</option>
                   ))}
                 </select>
               </div>
               <div className="field">
-                <label htmlFor="b-timeline">When do you want to start?</label>
+                <label htmlFor="b-timeline">When do you want to start? <Req /></label>
                 <select id="b-timeline" name="timeline" defaultValue="" required>
                   <option value="" disabled>Select a timeline</option>
                   {TIMELINE_OPTIONS.map((t) => (
-                    <option key={t}>{t}</option>
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
               </div>
             </div>
+            <div className="field">
+              <label htmlFor="b-message">Project Details <Req /></label>
+              <textarea
+                id="b-message"
+                name="message"
+                rows={3}
+                placeholder="Tell us briefly about your project..."
+                minLength={MIN_MESSAGE_LENGTH}
+                maxLength={1000}
+                title="Give us at least a sentence about the project"
+                required
+              ></textarea>
+            </div>
+
             <button type="submit" className="btn-solid" disabled={bannerSubmitting}>
               {bannerSubmitting ? "Sending…" : bannerBtnText}
             </button>
+
             {bannerError && (
-              <p className="form-note" style={{ color: "#e2231a" }}>
-                Something went wrong. Please try again.
-              </p>
+              <p className="form-error" role="alert">{bannerError}</p>
             )}
             <p className="form-note">No spam. Just a conversation about your story.</p>
           </form>
@@ -648,7 +793,7 @@ export default function Home() {
             <div className="corner tl"></div>
             <div className="corner br"></div>
             <p className="about-tag">
-              "We don't just create visuals.<br />We craft stories that stay."
+              &quot;We don&apos;t just create visuals.<br />We craft stories that stay.&quot;
             </p>
           </div>
           <div className="reveal-right">
@@ -749,7 +894,7 @@ export default function Home() {
             Ready to Break<br />the Mold?
           </h2>
           <p>
-            Let's collaborate on your next masterpiece. Our studio doors are always open for the
+            Let&apos;s collaborate on your next masterpiece. Our studio doors are always open for the
             brave.
           </p>
           <div className="cta-actions">
@@ -833,76 +978,128 @@ export default function Home() {
           <button className="modal-close" onClick={closeModal} aria-label="Close">×</button>
 
           <div id="modalFormWrap" style={{ display: popupSuccess ? "none" : "block" }}>
-            <span className="eyebrow">Let's Create Together</span>
+            <span className="eyebrow">Let&apos;s Create Together</span>
             <h3>Send an Enquiry</h3>
-            <p className="sub">Share a few details and our studio will get back to you shortly.</p>
+            <p className="sub">
+              Share a few details and our studio will get back to you shortly.
+              <span className="req-legend">All fields are required.</span>
+            </p>
 
-            <form id="popupForm" ref={popupFormRef} onSubmit={(e) => handleSubmit(e, "popup")}>
+            {/* POPUP ENQUIRY FORM — all fields mandatory */}
+            <form
+              id="popupForm"
+              ref={popupFormRef}
+              noValidate={false}
+              onSubmit={(e) => handleSubmit(e, "popup")}
+            >
               <div className="field-row">
                 <div className="field">
-                  <label htmlFor="p-name">Full Name</label>
-                  <input type="text" id="p-name" name="name" placeholder="Your name" required />
+                  <label htmlFor="p-name">Full Name <Req /></label>
+                  <input
+                    type="text"
+                    id="p-name"
+                    name="name"
+                    placeholder="Your name"
+                    autoComplete="name"
+                    minLength={2}
+                    maxLength={120}
+                    required
+                  />
                 </div>
                 <div className="field">
-                  <label htmlFor="p-email">Email</label>
-                  <input type="email" id="p-email" name="email" placeholder="you@brand.com" required />
+                  <label htmlFor="p-email">Email <Req /></label>
+                  <input
+                    type="email"
+                    id="p-email"
+                    name="email"
+                    placeholder="you@brand.com"
+                    autoComplete="email"
+                    inputMode="email"
+                    maxLength={100}
+                    title="Enter a valid email address, e.g. you@brand.com"
+                    required
+                  />
                 </div>
               </div>
               <div className="field-row">
                 <div className="field">
-                  <label htmlFor="p-company">Company / Brand</label>
-                  <input type="text" id="p-company" name="company" placeholder="Your company name" required />
+                  <label htmlFor="p-company">Company / Brand <Req /></label>
+                  <input
+                    type="text"
+                    id="p-company"
+                    name="company"
+                    placeholder="Your company name"
+                    autoComplete="organization"
+                    minLength={2}
+                    maxLength={200}
+                    required
+                  />
                 </div>
                 <div className="field">
-                  <label htmlFor="p-phone">Phone / WhatsApp</label>
-                  <input type="tel" id="p-phone" name="phone" placeholder="+91 00000 00000" required />
+                  <label htmlFor="p-phone">Phone / WhatsApp <Req /></label>
+                  <input
+                    type="tel"
+                    id="p-phone"
+                    name="phone"
+                    placeholder="+91 00000 00000"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    maxLength={30}
+                    pattern={PHONE_PATTERN}
+                    title="Enter at least 10 digits, e.g. +91 98470 00000"
+                    required
+                  />
                 </div>
               </div>
               <div className="field-row">
                 <div className="field">
-                  <label htmlFor="p-service">Service Interested In</label>
+                  <label htmlFor="p-service">Service Interested In <Req /></label>
                   <select id="p-service" name="service" defaultValue="" required>
                     <option value="" disabled>Select a service</option>
                     {SERVICE_OPTIONS.map((s) => (
-                      <option key={s}>{s}</option>
+                      <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                 </div>
                 <div className="field">
-                  <label htmlFor="p-budget">Monthly / Project Budget</label>
+                  <label htmlFor="p-budget">Monthly / Project Budget <Req /></label>
                   <select id="p-budget" name="budget" defaultValue="" required>
                     <option value="" disabled>Select a budget</option>
                     {BUDGET_OPTIONS.map((b) => (
-                      <option key={b}>{b}</option>
+                      <option key={b} value={b}>{b}</option>
                     ))}
                   </select>
                 </div>
               </div>
               <div className="field">
-                <label htmlFor="p-timeline">When do you want to start?</label>
+                <label htmlFor="p-timeline">When do you want to start? <Req /></label>
                 <select id="p-timeline" name="timeline" defaultValue="" required>
                   <option value="" disabled>Select a timeline</option>
                   {TIMELINE_OPTIONS.map((t) => (
-                    <option key={t}>{t}</option>
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
               </div>
               <div className="field">
-                <label htmlFor="p-message">Project Details</label>
+                <label htmlFor="p-message">Project Details <Req /></label>
                 <textarea
                   id="p-message"
                   name="message"
                   rows={3}
                   placeholder="Tell us briefly about your project..."
+                  minLength={MIN_MESSAGE_LENGTH}
+                  maxLength={1000}
+                  title="Give us at least a sentence about the project"
+                  required
                 ></textarea>
               </div>
+
               <button type="submit" className="btn-solid" disabled={popupSubmitting}>
                 {popupSubmitting ? "Sending…" : "Send Enquiry"}
               </button>
+
               {popupError && (
-                <p className="form-note" style={{ color: "#e2231a" }}>
-                  Something went wrong. Please try again.
-                </p>
+                <p className="form-error" role="alert">{popupError}</p>
               )}
             </form>
           </div>
@@ -929,7 +1126,7 @@ export default function Home() {
 }
 
 /* =========================================================
-   FULL ORIGINAL CSS — unchanged
+   FULL CSS — original styles + required-field states
    ========================================================= */
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500;1,600&family=Jost:wght@300;400;500;600;700&display=swap');
@@ -1200,6 +1397,7 @@ header.scrolled .menu-toggle span{background:var(--ivory);}
   border:1px solid var(--line);
   padding:38px 34px;
   position:relative;
+  max-height:none;
 }
 .banner-form::before{
   content:"";
@@ -1250,7 +1448,10 @@ header.scrolled .menu-toggle span{background:var(--ivory);}
 .field input:focus,
 .field select:focus,
 .field textarea:focus{border-color:var(--gold);}
-.field textarea{resize:none;}
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible{outline:2px solid var(--gold); outline-offset:3px;}
+.field textarea{resize:vertical; min-height:74px;}
 .banner-form .btn-solid{width:100%; text-align:center; margin-top:6px;}
 .form-note{
   font-size:11px;
@@ -1258,6 +1459,50 @@ header.scrolled .menu-toggle span{background:var(--ivory);}
   margin-top:14px;
   text-align:center;
   letter-spacing:0.03em;
+}
+
+/* ===== REQUIRED FIELD STATES ===== */
+.req{
+  color:var(--gold);
+  font-weight:600;
+  margin-left:3px;
+}
+.req-legend{
+  display:block;
+  margin-top:6px;
+  font-size:11px;
+  letter-spacing:0.16em;
+  text-transform:uppercase;
+  color:var(--gold);
+}
+/* highlight empty/invalid fields only after the user has interacted
+   or after a failed submit — never on first paint */
+.field input:user-invalid,
+.field select:user-invalid,
+.field textarea:user-invalid{
+  border-bottom-color:var(--gold);
+  background:var(--gold-soft);
+}
+form.was-validated .field input:invalid,
+form.was-validated .field select:invalid,
+form.was-validated .field textarea:invalid{
+  border-bottom-color:var(--gold);
+  background:var(--gold-soft);
+}
+form.was-validated .field input:valid,
+form.was-validated .field select:valid,
+form.was-validated .field textarea:valid{
+  border-bottom-color:rgba(0,0,0,0.28);
+}
+.form-error{
+  margin-top:14px;
+  padding:10px 12px;
+  border-left:2px solid var(--gold);
+  background:var(--gold-soft);
+  color:var(--gold);
+  font-size:12px;
+  line-height:1.5;
+  letter-spacing:0.02em;
 }
 
 /* ===== ABOUT (IMAGE SECTION) ===== */
