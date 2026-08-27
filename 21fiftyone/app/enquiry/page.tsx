@@ -145,52 +145,225 @@ const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
   );
 };
 
-/* ---------- Tracking (Lead Page URL + UTM) ---------- */
+/* =========================================================
+   TRACKING — UTM, click IDs and referrer attribution
+   ---------------------------------------------------------
+   Rules this follows:
+
+   1. A visit that arrives with ANY utm_* or ad click id starts
+      a NEW touch, and the whole set is replaced. Merging a new
+      utm_source onto an old utm_medium is how campaign reports
+      end up lying, so we never do it.
+   2. A visit with no campaign data keeps whatever the session
+      already had — browsing around the site does not wipe the
+      original attribution.
+   3. When there is no utm_source at all we infer source/medium
+      from the click id or the referring host, instead of
+      dumping everything into "direct".
+   4. First touch is kept in localStorage for 90 days, so a lead
+      who found you on Google in March and enquired in May still
+      credits Google.
+   5. Every value is clipped to 255 characters — that is the max
+      length of the single-line Bigin fields, and anything longer
+      risks the record being rejected.
+   ========================================================= */
+const TRACKING_KEY = "f21_tracking";
+const FIRST_TOUCH_KEY = "f21_first_touch";
+const FIRST_TOUCH_TTL = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+const UTM_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+] as const;
+
+const CLICK_ID_KEYS = [
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "fbclid",
+  "msclkid",
+  "ttclid",
+] as const;
+
+const SEARCH_HOSTS = [
+  "google.",
+  "bing.",
+  "yahoo.",
+  "duckduckgo.",
+  "ecosia.",
+  "yandex.",
+  "baidu.",
+  "brave.",
+];
+
+const SOCIAL_HOSTS = [
+  "facebook.",
+  "instagram.",
+  "linkedin.",
+  "youtube.",
+  "pinterest.",
+  "threads.",
+  "twitter.",
+  "x.com",
+  "t.co",
+  "whatsapp.",
+  "reddit.",
+  "snapchat.",
+  "tiktok.",
+];
+
 interface TrackingData {
   leadPageUrl: string;
+  landingPageUrl: string;
+  referrer: string;
   utmSource: string;
   utmMedium: string;
   utmCampaign: string;
   utmContent: string;
   utmTerm: string;
+  gclid: string;
+  fbclid: string;
+  msclkid: string;
+  firstTouchSource: string;
+  firstTouchMedium: string;
+  firstTouchCampaign: string;
+  firstTouchDate: string;
 }
 
 const EMPTY_TRACKING: TrackingData = {
   leadPageUrl: "",
+  landingPageUrl: "",
+  referrer: "",
   utmSource: "",
   utmMedium: "",
   utmCampaign: "",
   utmContent: "",
   utmTerm: "",
+  gclid: "",
+  fbclid: "",
+  msclkid: "",
+  firstTouchSource: "",
+  firstTouchMedium: "",
+  firstTouchCampaign: "",
+  firstTouchDate: "",
 };
 
-const TRACKING_KEY = "f21_tracking";
+/* Bigin single-line fields are capped at 255 characters */
+const clip = (value: string | null | undefined, max = 255) =>
+  (value ?? "").trim().slice(0, max);
+
+const readStore = (store: Storage, key: string): Record<string, unknown> | null => {
+  try {
+    const raw = store.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeStore = (store: Storage, key: string, value: unknown) => {
+  try {
+    store.setItem(key, JSON.stringify(value));
+  } catch {
+    /* private mode / storage full — tracking is best effort */
+  }
+};
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
+const hostMatches = (host: string, list: string[]) =>
+  list.some((entry) => host === entry || host.includes(entry));
+
+/* Work out source/medium when the link had no utm_source on it */
+const inferSourceMedium = (params: URLSearchParams, referrer: string) => {
+  if (params.get("gclid") || params.get("gbraid") || params.get("wbraid")) {
+    return { source: "google", medium: "cpc" };
+  }
+  if (params.get("msclkid")) return { source: "bing", medium: "cpc" };
+  if (params.get("fbclid")) return { source: "facebook", medium: "social" };
+  if (params.get("ttclid")) return { source: "tiktok", medium: "social" };
+
+  const host = hostOf(referrer);
+  /* no referrer, or an internal link = someone who typed the URL,
+     used a bookmark, or came from an app with no referrer */
+  if (!host || host === hostOf(window.location.href)) {
+    return { source: "direct", medium: "none" };
+  }
+  if (hostMatches(host, SEARCH_HOSTS)) return { source: host, medium: "organic" };
+  if (hostMatches(host, SOCIAL_HOSTS)) return { source: host, medium: "social" };
+  return { source: host, medium: "referral" };
+};
+
+/* Build a complete, self-consistent touch from the current URL */
+const buildTouch = (params: URLSearchParams, referrer: string): TrackingData => {
+  const inferred = inferSourceMedium(params, referrer);
+  const href = clip(window.location.href);
+
+  return {
+    ...EMPTY_TRACKING,
+    leadPageUrl: href,
+    landingPageUrl: href,
+    referrer: clip(referrer),
+    utmSource: clip(params.get("utm_source") || inferred.source),
+    utmMedium: clip(params.get("utm_medium") || inferred.medium),
+    utmCampaign: clip(params.get("utm_campaign")),
+    utmContent: clip(params.get("utm_content")),
+    utmTerm: clip(params.get("utm_term")),
+    gclid: clip(
+      params.get("gclid") || params.get("gbraid") || params.get("wbraid")
+    ),
+    fbclid: clip(params.get("fbclid")),
+    msclkid: clip(params.get("msclkid")),
+  };
+};
+
+/* Map the traffic back onto Bigin's "Lead Source" picklist.
+   Only values that exist in the picklist may be returned — Bigin
+   silently drops the field otherwise. */
+const biginLeadSource = (t: TrackingData): string => {
+  const source = t.utmSource.toLowerCase();
+  const medium = t.utmMedium.toLowerCase();
+  const isPaid = /cpc|ppc|paid|ads|sem|display|banner/.test(medium);
+
+  if (t.gclid || (source.includes("google") && isPaid)) return "Google Ads";
+  if (t.msclkid) return "Advertisement";
+  if (
+    isPaid &&
+    (source.includes("facebook") ||
+      source.includes("instagram") ||
+      source.includes("meta") ||
+      source === "fb" ||
+      source === "ig")
+  ) {
+    return "Meta Ads";
+  }
+  if (source.includes("whatsapp")) {
+    return t.utmCampaign ? "WhatsApp Campaign" : "WhatsApp Organic";
+  }
+  return BIGIN_LEAD_SOURCE; // Official Website
+};
 
 /* ============================ PAGE ============================ */
 export default function Home() {
   const router = useRouter(); // NEW
 
   const [scrolled, setScrolled] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
 
-  // submission-in-progress + error state for both forms
-  const [bannerSubmitting, setBannerSubmitting] = useState(false);
-  const [popupSubmitting, setPopupSubmitting] = useState(false);
-  const [bannerError, setBannerError] = useState(false);
-  const [popupError, setPopupError] = useState(false);
+  // submission-in-progress + error state for the enquiry form
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
   // campaign tracking captured from the URL
   const [tracking, setTracking] = useState<TrackingData>(EMPTY_TRACKING);
-
-  const popupFormRef = useRef<HTMLFormElement>(null);
-
-  const openModal = () => setModalOpen(true);
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setPopupError(false);
-    popupFormRef.current?.reset();
-  };
 
   /* header scroll state */
   useEffect(() => {
@@ -199,73 +372,86 @@ export default function Home() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  /* lock body scroll while modal is open */
-  useEffect(() => {
-    document.body.style.overflow = modalOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [modalOpen]);
-
-  /* escape key closes modal */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeModal();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
-  /* auto-open popup on page load */
-  useEffect(() => {
-    const t = window.setTimeout(() => setModalOpen(true), 700);
-    return () => window.clearTimeout(t);
-  }, []);
-
   /* NEW: warm up the thank-you route so the redirect is instant */
   useEffect(() => {
     router.prefetch(THANK_YOU_PATH);
   }, [router]);
 
   /* ---------------------------------------------------------
-     Capture Lead Page URL + UTM parameters.
-     Values are stored in sessionStorage so a visitor who lands
-     on ?utm_source=google and then browses around still submits
-     the original campaign data.
+     Capture campaign attribution.
+
+     Arriving with utm_* or a click id = new touch, replaces the
+     stored set completely. Arriving with nothing = keep what the
+     session already holds, so internal navigation never erases
+     the campaign that actually brought the visitor in.
      --------------------------------------------------------- */
   useEffect(() => {
+    const href = clip(window.location.href);
+
     try {
       const params = new URLSearchParams(window.location.search);
-      const stored = window.sessionStorage.getItem(TRACKING_KEY);
-      const saved: Partial<TrackingData> = stored ? JSON.parse(stored) : {};
 
-      const pick = (key: string, fallback: string) =>
-        params.get(key) || fallback || "";
+      const isNewTouch = [...UTM_KEYS, ...CLICK_ID_KEYS].some(
+        (key) => (params.get(key) ?? "").trim() !== ""
+      );
 
-      const data: TrackingData = {
-        leadPageUrl: window.location.href,
-        utmSource: pick("utm_source", saved.utmSource ?? ""),
-        utmMedium: pick("utm_medium", saved.utmMedium ?? ""),
-        utmCampaign: pick("utm_campaign", saved.utmCampaign ?? ""),
-        utmContent: pick("utm_content", saved.utmContent ?? ""),
-        utmTerm: pick("utm_term", saved.utmTerm ?? ""),
-      };
+      const saved = readStore(window.sessionStorage, TRACKING_KEY) as
+        | Partial<TrackingData>
+        | null;
 
-      /* fall back to referrer when there is no utm_source at all */
-      if (!data.utmSource && document.referrer) {
-        try {
-          data.utmSource = new URL(document.referrer).hostname;
-        } catch {
-          /* ignore malformed referrer */
-        }
+      const data: TrackingData =
+        isNewTouch || !saved
+          ? buildTouch(params, document.referrer)
+          : { ...EMPTY_TRACKING, ...saved };
+
+      /* the enquiry may be sent from a different page than the one
+         they landed on — record both */
+      data.leadPageUrl = href;
+      if (!data.landingPageUrl) data.landingPageUrl = href;
+
+      /* first touch: written once, then left alone for 90 days */
+      const firstRaw = readStore(window.localStorage, FIRST_TOUCH_KEY) as
+        | { source?: string; medium?: string; campaign?: string; savedAt?: number }
+        | null;
+
+      const firstIsFresh =
+        firstRaw &&
+        typeof firstRaw.savedAt === "number" &&
+        Date.now() - firstRaw.savedAt < FIRST_TOUCH_TTL;
+
+      if (firstIsFresh && firstRaw) {
+        data.firstTouchSource = clip(firstRaw.source);
+        data.firstTouchMedium = clip(firstRaw.medium);
+        data.firstTouchCampaign = clip(firstRaw.campaign);
+        data.firstTouchDate = new Date(firstRaw.savedAt as number)
+          .toISOString()
+          .slice(0, 10);
+      } else {
+        const savedAt = Date.now();
+        writeStore(window.localStorage, FIRST_TOUCH_KEY, {
+          source: data.utmSource,
+          medium: data.utmMedium,
+          campaign: data.utmCampaign,
+          savedAt,
+        });
+        data.firstTouchSource = data.utmSource;
+        data.firstTouchMedium = data.utmMedium;
+        data.firstTouchCampaign = data.utmCampaign;
+        data.firstTouchDate = new Date(savedAt).toISOString().slice(0, 10);
       }
-      if (!data.utmSource) data.utmSource = "direct";
 
-      window.sessionStorage.setItem(TRACKING_KEY, JSON.stringify(data));
+      writeStore(window.sessionStorage, TRACKING_KEY, data);
       setTracking(data);
     } catch (err) {
       console.error("Tracking capture failed:", err);
-      setTracking({ ...EMPTY_TRACKING, leadPageUrl: window.location.href });
+      /* never let tracking break the form — fall back to a usable set */
+      setTracking({
+        ...EMPTY_TRACKING,
+        leadPageUrl: href,
+        landingPageUrl: href,
+        utmSource: "direct",
+        utmMedium: "none",
+      });
     }
   }, []);
 
@@ -358,22 +544,59 @@ export default function Home() {
           ? rawPhone
           : `+91${rawPhone.replace(/^0+/, "").replace(/\s+/g, "")}`;
 
-        /* build the Description that Bigin expects (mandatory field) */
+        /* build the Description that Bigin expects (mandatory field).
+           Bigin only has four custom URL/UTM fields, so everything
+           else that matters for attribution is written here. */
         const descriptionParts = [
           payload.message?.trim() || "No additional details provided.",
           `Selected service on website: ${payload.service}`,
-          `Submitted from: ${payload.source === "popup" ? "Popup enquiry form" : "Hero banner form"}`,
+          `Submitted from: Website enquiry form`,
+          "",
+          "--- Attribution ---",
+          `Source / Medium: ${tracking.utmSource || "direct"} / ${tracking.utmMedium || "none"}`,
         ];
-        if (tracking.utmMedium) {
-          descriptionParts.push(`UTM Medium: ${tracking.utmMedium}`);
+        if (tracking.utmCampaign) {
+          descriptionParts.push(`Campaign: ${tracking.utmCampaign}`);
+        }
+        if (tracking.utmContent) {
+          descriptionParts.push(`Ad content: ${tracking.utmContent}`);
         }
         if (tracking.utmTerm) {
-          descriptionParts.push(`UTM Term: ${tracking.utmTerm}`);
+          descriptionParts.push(`Keyword (utm_term): ${tracking.utmTerm}`);
         }
+        if (tracking.gclid) {
+          descriptionParts.push(`Google click ID: ${tracking.gclid}`);
+        }
+        if (tracking.fbclid) {
+          descriptionParts.push(`Meta click ID: ${tracking.fbclid}`);
+        }
+        if (tracking.msclkid) {
+          descriptionParts.push(`Microsoft click ID: ${tracking.msclkid}`);
+        }
+        if (tracking.referrer) {
+          descriptionParts.push(`Referrer: ${tracking.referrer}`);
+        }
+        if (
+          tracking.landingPageUrl &&
+          tracking.landingPageUrl !== tracking.leadPageUrl
+        ) {
+          descriptionParts.push(`Landing page: ${tracking.landingPageUrl}`);
+        }
+        if (tracking.firstTouchSource) {
+          const firstCampaign = tracking.firstTouchCampaign
+            ? ` (${tracking.firstTouchCampaign})`
+            : "";
+          descriptionParts.push(
+            `First touch: ${tracking.firstTouchSource} / ${tracking.firstTouchMedium || "none"}${firstCampaign} on ${tracking.firstTouchDate}`
+          );
+        }
+        descriptionParts.push(`Submitted at: ${new Date().toLocaleString("en-IN")}`);
 
         const fields: Record<string, string> = {
           xnQsjsdp: BIGIN_XNQSJSDP,
-          zc_gad: "",
+          /* zc_gad is Zoho's Google Ads click field — feeding the
+             gclid here lets Bigin tie the deal back to the ad */
+          zc_gad: tracking.gclid,
           xmIwtLD: BIGIN_XMIWTLD,
           actionType: BIGIN_ACTION_TYPE,
           returnURL: "null",
@@ -388,14 +611,16 @@ export default function Home() {
           POTENTIALCF2: payload.timeline,
           Description: descriptionParts.join("\n"),
 
-          POTENTIALCF4: tracking.leadPageUrl,
-          POTENTIALCF7: tracking.utmCampaign,
-          POTENTIALCF5: tracking.utmSource,
-          POTENTIALCF6: tracking.utmContent,
+          /* all four are 255-char fields in Bigin */
+          POTENTIALCF4: clip(tracking.leadPageUrl),
+          POTENTIALCF7: clip(tracking.utmCampaign),
+          POTENTIALCF5: clip(tracking.utmSource),
+          POTENTIALCF6: clip(tracking.utmContent),
 
           Pipeline: BIGIN_PIPELINE,
           Stage: BIGIN_STAGE,
-          "Lead Source": BIGIN_LEAD_SOURCE,
+          /* Google Ads / Meta Ads / WhatsApp / Official Website */
+          "Lead Source": biginLeadSource(tracking),
         };
 
         const form = document.createElement("form");
@@ -443,15 +668,12 @@ export default function Home() {
 
   /* form submit — posts to Zoho Bigin (and Google Sheets if configured),
      then redirects to /thank-you */
-  const handleSubmit = async (
-    e: React.FormEvent<HTMLFormElement>,
-    source: "banner" | "popup"
-  ) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
 
     const payload = {
-      source,
+      source: "banner",
       name: String(formData.get("name") ?? ""),
       company: String(formData.get("company") ?? ""),
       phone: String(formData.get("phone") ?? ""),
@@ -460,12 +682,23 @@ export default function Home() {
       budget: String(formData.get("budget") ?? ""),
       timeline: String(formData.get("timeline") ?? ""),
       message: String(formData.get("message") ?? ""),
+      submittedAt: new Date().toISOString(),
+      leadSource: biginLeadSource(tracking),
       leadPageUrl: tracking.leadPageUrl,
+      landingPageUrl: tracking.landingPageUrl,
+      referrer: tracking.referrer,
       utmSource: tracking.utmSource,
       utmMedium: tracking.utmMedium,
       utmCampaign: tracking.utmCampaign,
       utmContent: tracking.utmContent,
       utmTerm: tracking.utmTerm,
+      gclid: tracking.gclid,
+      fbclid: tracking.fbclid,
+      msclkid: tracking.msclkid,
+      firstTouchSource: tracking.firstTouchSource,
+      firstTouchMedium: tracking.firstTouchMedium,
+      firstTouchCampaign: tracking.firstTouchCampaign,
+      firstTouchDate: tracking.firstTouchDate,
     };
 
     /* Bigin is the system of record — Google Sheets is a best-effort
@@ -479,19 +712,16 @@ export default function Home() {
       }
     };
 
-    const setSubmitting = source === "popup" ? setPopupSubmitting : setBannerSubmitting;
-    const setError = source === "popup" ? setPopupError : setBannerError;
-
     setSubmitting(true);
-    setError(false);
+    setSubmitError(false);
     try {
       await sendToBigin(payload);
       await alsoSendToSheet();
       goToThankYou(payload);
       /* keep the button in "Sending…" until the route changes */
     } catch (err) {
-      console.error(`${source} form submission failed:`, err);
-      setError(true);
+      console.error("Form submission failed:", err);
+      setSubmitError(true);
       setSubmitting(false);
     }
   };
@@ -515,20 +745,13 @@ export default function Home() {
           </ul>
         </nav>
         <div className="nav-right">
-          <a
-            href="#"
-            className="btn-ghost"
-            onClick={(e) => {
-              e.preventDefault();
-              openModal();
-            }}
-          >
+          <a href="#enquire" className="btn-ghost">
             Enquire Now
           </a>
         </div>
-        <button className="menu-toggle" aria-label="Menu" onClick={openModal}>
+        <a href="#enquire" className="menu-toggle" aria-label="Go to enquiry form">
           <span></span><span></span><span></span>
-        </button>
+        </a>
       </header>
 
       {/* ===== HERO + BANNER FORM ===== */}
@@ -568,8 +791,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* BANNER ENQUIRY FORM */}
-          <form className="banner-form" id="bannerForm" onSubmit={(e) => handleSubmit(e, "banner")}>
+          {/* ENQUIRY FORM */}
+          <form className="banner-form" id="enquire" onSubmit={handleSubmit}>
             <h3>Start Your Story</h3>
             <p className="sub">
               Tell us about your project — our studio will call you back within 24 hours.
@@ -620,10 +843,19 @@ export default function Home() {
                 </select>
               </div>
             </div>
-            <button type="submit" className="btn-solid" disabled={bannerSubmitting}>
-              {bannerSubmitting ? "Sending…" : "Request a Call Back"}
+            <div className="field">
+              <label htmlFor="b-message">Tell Us About Your Requirement</label>
+              <textarea
+                id="b-message"
+                name="message"
+                rows={3}
+                placeholder="Tell us briefly about your project..."
+              ></textarea>
+            </div>
+            <button type="submit" className="btn-solid" disabled={submitting}>
+              {submitting ? "Sending…" : "Request a Call Back"}
             </button>
-            {bannerError && (
+            {submitError && (
               <p className="form-note" style={{ color: "#e2231a" }}>
                 Something went wrong. Please try again.
               </p>
@@ -746,14 +978,7 @@ export default function Home() {
             brave.
           </p>
           <div className="cta-actions">
-            <a
-              href="#"
-              className="btn-solid"
-              onClick={(e) => {
-                e.preventDefault();
-                openModal();
-              }}
-            >
+            <a href="#enquire" className="btn-solid">
               Connect With The Studio
             </a>
             <a href="#services" className="btn-ghost">View Our Work</a>
@@ -810,95 +1035,9 @@ export default function Home() {
       </footer>
 
       {/* ===== FLOATING ENQUIRE BUTTON ===== */}
-      <button className="float-btn" onClick={openModal}>
+      <a href="#enquire" className="float-btn">
         <span className="dot"></span> Enquire Now
-      </button>
-
-      {/* ===== POPUP MODAL FORM ===== */}
-      <div
-        className={`modal-overlay${modalOpen ? " active" : ""}`}
-        id="modalOverlay"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) closeModal();
-        }}
-      >
-        <div className="modal-box">
-          <button className="modal-close" onClick={closeModal} aria-label="Close">×</button>
-
-          <span className="eyebrow">Let's Create Together</span>
-          <h3>Send an Enquiry</h3>
-          <p className="sub">Share a few details and our studio will get back to you shortly.</p>
-
-          <form id="popupForm" ref={popupFormRef} onSubmit={(e) => handleSubmit(e, "popup")}>
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="p-name">Full Name</label>
-                <input type="text" id="p-name" name="name" placeholder="Your name" required />
-              </div>
-              <div className="field">
-                <label htmlFor="p-email">Email</label>
-                <input type="email" id="p-email" name="email" placeholder="you@brand.com" required />
-              </div>
-            </div>
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="p-company">Company / Brand</label>
-                <input type="text" id="p-company" name="company" placeholder="Your company name" required />
-              </div>
-              <div className="field">
-                <label htmlFor="p-phone">Phone / WhatsApp</label>
-                <input type="tel" id="p-phone" name="phone" placeholder="+91 00000 00000" required />
-              </div>
-            </div>
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="p-service">Service Interested In</label>
-                <select id="p-service" name="service" defaultValue="" required>
-                  <option value="" disabled>Select a service</option>
-                  {SERVICE_OPTIONS.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="p-budget">Monthly / Project Budget</label>
-                <select id="p-budget" name="budget" defaultValue="" required>
-                  <option value="" disabled>Select a budget</option>
-                  {BUDGET_OPTIONS.map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="field">
-              <label htmlFor="p-timeline">When do you want to start?</label>
-              <select id="p-timeline" name="timeline" defaultValue="" required>
-                <option value="" disabled>Select a timeline</option>
-                {TIMELINE_OPTIONS.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="p-message">Project Details</label>
-              <textarea
-                id="p-message"
-                name="message"
-                rows={3}
-                placeholder="Tell us briefly about your project..."
-              ></textarea>
-            </div>
-            <button type="submit" className="btn-solid" disabled={popupSubmitting}>
-              {popupSubmitting ? "Sending…" : "Send Enquiry"}
-            </button>
-            {popupError && (
-              <p className="form-note" style={{ color: "#e2231a" }}>
-                Something went wrong. Please try again.
-              </p>
-            )}
-          </form>
-        </div>
-      </div>
+      </a>
 
       {/* ===== HIDDEN TARGET FOR THE BIGIN POST ===== */}
       <iframe
