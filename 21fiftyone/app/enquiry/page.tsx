@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation"; // NEW
 
 
@@ -9,18 +9,23 @@ const SHEET_ENDPOINT = process.env.NEXT_PUBLIC_SHEET_ENDPOINT ?? "";
 /* =========================================================
    ZOHO BIGIN — WEB TO RECORD CONFIG
    ---------------------------------------------------------
-   Values below come from the "2151 Get Quote" Bigin webform.
+   Values below come from the "MS Get Quote" Bigin webform.
    The webform script is served from bigin.zoho.com, so the
    POST endpoint is https://bigin.zoho.com/crm/WebToRecordForm
    (.in / .eu / .com.au accounts use a different domain.)
+
+   IMPORTANT: this form has reCAPTCHA enabled in Bigin. A
+   background POST cannot produce a captcha token, so Zoho will
+   reject every submission until reCAPTCHA is switched off in
+   Setup > Developer Hub > Webforms > MS Get Quote.
    ========================================================= */
 const BIGIN_ACTION = "https://bigin.zoho.com/crm/WebToRecordForm";
 const BIGIN_XNQSJSDP =
-  "02c968b7a944c9b62a557ab89f5d5af9aa2368d873db16baa0b917eace765312";
+  "98ea7a89a13df0f9f658580a9c875ee0d21ba946b68372ddf0da4593eef8fd0d";
 const BIGIN_XMIWTLD =
-  "4c114c3a8f05e6c49db3b02d6c880c8a0895a98f5c56091f114c0840fe253a017556f596a0fe7b09a643bfd0ee3b1ce8";
+  "81a6928171067053d2d0cf6ca3a3a766a669f320f445ceae5ed81fcabe8440f54d3dee36d6eeb852887b36e4cbe363b7";
 const BIGIN_ACTION_TYPE = "UG90ZW50aWFscw==";
-const BIGIN_PIPELINE = "Sales Pipeline Standard 2";
+const BIGIN_PIPELINE = "Sales Pipeline Standard";
 const BIGIN_STAGE = "Qualification";
 const BIGIN_LEAD_SOURCE = "Official Website";
 const BIGIN_IFRAME_NAME = "bigin_post_frame";
@@ -141,6 +146,232 @@ const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
       <h4>{title}</h4>
       <p>{desc}</p>
       <span className="arrow">↗</span>
+    </div>
+  );
+};
+
+/* ---------- Country dial codes (same list Zoho's webform uses) ---------- */
+type Country = { iso: string; name: string; dial: string };
+
+const COUNTRIES: Country[] = (
+  [
+    ["af", "Afghanistan", "93"], ["al", "Albania", "355"], ["dz", "Algeria", "213"],
+    ["as", "American Samoa", "1684"], ["ad", "Andorra", "376"], ["ao", "Angola", "244"],
+    ["ai", "Anguilla", "1264"], ["aq", "Antarctica", "672"], ["ag", "Antigua & Barbuda", "1268"],
+    ["ar", "Argentina", "54"], ["am", "Armenia", "374"], ["aw", "Aruba", "297"],
+    ["au", "Australia", "61"], ["at", "Austria", "43"], ["az", "Azerbaijan", "994"],
+    ["bs", "Bahamas", "1242"], ["bh", "Bahrain", "973"], ["bd", "Bangladesh", "880"],
+    ["bb", "Barbados", "1246"], ["by", "Belarus", "375"], ["be", "Belgium", "32"],
+    ["bz", "Belize", "501"], ["bj", "Benin", "229"], ["bm", "Bermuda", "1441"],
+    ["bt", "Bhutan", "975"], ["bo", "Bolivia", "591"], ["ba", "Bosnia and Herzegovina", "387"],
+    ["bw", "Botswana", "267"], ["bv", "Bouvet Island", "47"], ["br", "Brazil", "55"],
+    ["io", "British Indian Ocean Territory", "246"], ["vg", "British Virgin Islands", "1284"],
+    ["bn", "Brunei", "673"], ["bg", "Bulgaria", "359"], ["bf", "Burkina Faso", "226"],
+    ["bi", "Burundi", "257"], ["kh", "Cambodia", "855"], ["cm", "Cameroon", "237"],
+    ["ca", "Canada", "1"], ["cv", "Cape Verde", "238"], ["bq", "Caribbean Netherlands", "599"],
+    ["ky", "Cayman Islands", "1345"], ["cf", "Central African Republic", "236"],
+    ["td", "Chad", "235"], ["cl", "Chile", "56"], ["cn", "China", "86"],
+    ["cx", "Christmas Island", "61"], ["cc", "Cocos (Keeling) Island", "61"],
+    ["co", "Colombia", "57"], ["km", "Comoros", "269"], ["cg", "Congo - Brazzaville", "242"],
+    ["cd", "Congo - Kinshasa", "243"], ["ck", "Cook Islands", "682"], ["cr", "Costa Rica", "506"],
+    ["hr", "Croatia", "385"], ["cu", "Cuba", "53"], ["cw", "Curaçao", "599"],
+    ["cy", "Cyprus", "357"], ["cz", "Czechia", "420"], ["ci", "Côte d'Ivoire", "225"],
+    ["dk", "Denmark", "45"], ["dj", "Djibouti", "253"], ["dm", "Dominica", "1767"],
+    ["do", "Dominican Republic", "1"], ["ec", "Ecuador", "593"], ["eg", "Egypt", "20"],
+    ["sv", "El Salvador", "503"], ["gq", "Equatorial Guinea", "240"], ["er", "Eritrea", "291"],
+    ["ee", "Estonia", "372"], ["et", "Ethiopia", "251"], ["fk", "Falkland Islands", "500"],
+    ["fo", "Faroe Islands", "298"], ["fj", "Fiji", "679"], ["fi", "Finland", "358"],
+    ["fr", "France", "33"], ["gf", "French Guiana", "594"], ["pf", "French Polynesia", "689"],
+    ["tf", "French Southern Territories", "262"], ["ga", "Gabon", "241"], ["gm", "Gambia", "220"],
+    ["ge", "Georgia", "995"], ["de", "Germany", "49"], ["gh", "Ghana", "233"],
+    ["gi", "Gibraltar", "350"], ["gr", "Greece", "30"], ["gl", "Greenland", "299"],
+    ["gd", "Grenada", "1473"], ["gp", "Guadeloupe", "590"], ["gu", "Guam", "1671"],
+    ["gt", "Guatemala", "502"], ["gg", "Guernsey", "44"], ["gn", "Guinea", "224"],
+    ["gw", "Guinea-Bissau", "245"], ["gy", "Guyana", "592"], ["ht", "Haiti", "509"],
+    ["hm", "Heard & McDonald Islands", "672"], ["hn", "Honduras", "504"],
+    ["hk", "Hong Kong", "852"], ["hu", "Hungary", "36"], ["is", "Iceland", "354"],
+    ["in", "India", "91"], ["id", "Indonesia", "62"], ["ir", "Iran", "98"],
+    ["iq", "Iraq", "964"], ["ie", "Ireland", "353"], ["im", "Isle of Man", "44"],
+    ["il", "Israel", "972"], ["it", "Italy", "39"], ["jm", "Jamaica", "1876"],
+    ["jp", "Japan", "81"], ["je", "Jersey", "44"], ["jo", "Jordan", "962"],
+    ["kz", "Kazakhstan", "7"], ["ke", "Kenya", "254"], ["ki", "Kiribati", "686"],
+    ["xk", "Kosovo", "383"], ["kw", "Kuwait", "965"], ["kg", "Kyrgyzstan", "996"],
+    ["la", "Laos", "856"], ["lv", "Latvia", "371"], ["lb", "Lebanon", "961"],
+    ["ls", "Lesotho", "266"], ["lr", "Liberia", "231"], ["ly", "Libya", "218"],
+    ["li", "Liechtenstein", "423"], ["lt", "Lithuania", "370"], ["lu", "Luxembourg", "352"],
+    ["mo", "Macao", "853"], ["mk", "Macedonia", "389"], ["mg", "Madagascar", "261"],
+    ["mw", "Malawi", "265"], ["my", "Malaysia", "60"], ["mv", "Maldives", "960"],
+    ["ml", "Mali", "223"], ["mt", "Malta", "356"], ["mh", "Marshall Islands", "692"],
+    ["mq", "Martinique", "596"], ["mr", "Mauritania", "222"], ["mu", "Mauritius", "230"],
+    ["yt", "Mayotte", "262"], ["mx", "Mexico", "52"], ["fm", "Micronesia", "691"],
+    ["md", "Moldova", "373"], ["mc", "Monaco", "377"], ["mn", "Mongolia", "976"],
+    ["me", "Montenegro", "382"], ["ms", "Montserrat", "1664"], ["ma", "Morocco", "212"],
+    ["mz", "Mozambique", "258"], ["mm", "Myanmar (Burma)", "95"], ["na", "Namibia", "264"],
+    ["nr", "Nauru", "674"], ["np", "Nepal", "977"], ["nl", "Netherlands", "31"],
+    ["nc", "New Caledonia", "687"], ["nz", "New Zealand", "64"], ["ni", "Nicaragua", "505"],
+    ["ne", "Niger", "227"], ["ng", "Nigeria", "234"], ["nu", "Niue", "683"],
+    ["nf", "Norfolk Island", "672"], ["kp", "North Korea", "850"],
+    ["mp", "Northern Mariana Islands", "1670"], ["no", "Norway", "47"], ["om", "Oman", "968"],
+    ["pk", "Pakistan", "92"], ["pw", "Palau", "680"], ["ps", "Palestinian Territories", "970"],
+    ["pa", "Panama", "507"], ["pg", "Papua New Guinea", "675"], ["py", "Paraguay", "595"],
+    ["pe", "Peru", "51"], ["ph", "Philippines", "63"], ["pn", "Pitcairn Islands", "64"],
+    ["pl", "Poland", "48"], ["pt", "Portugal", "351"], ["pr", "Puerto Rico", "1"],
+    ["qa", "Qatar", "974"], ["ro", "Romania", "40"], ["ru", "Russia", "7"],
+    ["rw", "Rwanda", "250"], ["re", "Réunion", "262"], ["ws", "Samoa", "685"],
+    ["sm", "San Marino", "378"], ["sa", "Saudi Arabia", "966"], ["sn", "Senegal", "221"],
+    ["rs", "Serbia", "381"], ["sc", "Seychelles", "248"], ["sl", "Sierra Leone", "232"],
+    ["sg", "Singapore", "65"], ["sx", "Sint Maarten", "1721"], ["sk", "Slovakia", "421"],
+    ["si", "Slovenia", "386"], ["sb", "Solomon Islands", "677"], ["so", "Somalia", "252"],
+    ["za", "South Africa", "27"],
+    ["gs", "South Georgia & South Sandwich Islands", "500"], ["kr", "South Korea", "82"],
+    ["ss", "South Sudan", "211"], ["es", "Spain", "34"], ["lk", "Sri Lanka", "94"],
+    ["bl", "St Barthélemy", "590"], ["sh", "St Helena", "290"],
+    ["kn", "St Kitts & Nevis", "1869"], ["lc", "St Lucia", "1758"], ["mf", "St Martin", "590"],
+    ["pm", "St Pierre & Miquelon", "508"], ["vc", "St Vincent & Grenadines", "1784"],
+    ["sd", "Sudan", "249"], ["sr", "Suriname", "597"], ["sj", "Svalbard & Jan Mayen", "47"],
+    ["sz", "Swaziland", "268"], ["se", "Sweden", "46"], ["ch", "Switzerland", "41"],
+    ["sy", "Syria", "963"], ["st", "São Tomé & Príncipe", "239"], ["tw", "Taiwan", "886"],
+    ["tj", "Tajikistan", "992"], ["tz", "Tanzania", "255"], ["th", "Thailand", "66"],
+    ["tl", "Timor-Leste", "670"], ["tg", "Togo", "228"], ["tk", "Tokelau", "690"],
+    ["to", "Tonga", "676"], ["tt", "Trinidad & Tobago", "1868"], ["tn", "Tunisia", "216"],
+    ["tr", "Turkey", "90"], ["tm", "Turkmenistan", "993"],
+    ["tc", "Turks & Caicos Islands", "1"], ["tv", "Tuvalu", "688"],
+    ["um", "US Outlying Islands", "1"], ["vi", "US Virgin Islands", "1340"],
+    ["ug", "Uganda", "256"], ["ua", "Ukraine", "380"],
+    ["ae", "United Arab Emirates", "971"], ["gb", "United Kingdom", "44"],
+    ["us", "United States", "1"], ["uy", "Uruguay", "598"], ["uz", "Uzbekistan", "998"],
+    ["vu", "Vanuatu", "678"], ["va", "Vatican City", "379"], ["ve", "Venezuela", "58"],
+    ["vn", "Vietnam", "84"], ["wf", "Wallis & Futuna", "681"],
+    ["eh", "Western Sahara", "212"], ["ye", "Yemen", "967"], ["zm", "Zambia", "260"],
+    ["zw", "Zimbabwe", "263"], ["ax", "Åland Islands", "358"],
+  ] as [string, string, string][]
+).map(([iso, name, dial]) => ({ iso, name, dial: `+${dial}` }));
+
+const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.iso === "in") ?? COUNTRIES[0];
+
+/* ---------- Phone input with a searchable dial-code dropdown ----------
+   The visible number box is deliberately unnamed. A hidden input carries
+   "dial + digits" under name="phone", so FormData picks up a single clean
+   E.164 value and Bigin receives exactly what it expects. */
+const PhoneField: React.FC<{ id: string; label: string }> = ({ id, label }) => {
+  const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
+  const [number, setNumber] = useState("");
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return COUNTRIES;
+    return COUNTRIES.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.dial.includes(q)
+    );
+  }, [query]);
+
+  /* close on outside click or Escape */
+  useEffect(() => {
+    if (!open) return;
+
+    const onClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  /* focus the search box and bring the current country into view */
+  useEffect(() => {
+    if (!open) return;
+    searchRef.current?.focus();
+    activeRef.current?.scrollIntoView({ block: "center" });
+  }, [open]);
+
+  const choose = (c: Country) => {
+    setCountry(c);
+    setOpen(false);
+    setQuery("");
+  };
+
+  return (
+    <div className="field phone-field" ref={wrapRef}>
+      <label htmlFor={id}>{label}</label>
+
+      <div className="phone-row">
+        <button
+          type="button"
+          className="dial-trigger"
+          onClick={() => setOpen((o) => !o)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={`Country code, currently ${country.name} ${country.dial}`}
+        >
+          <span>{country.dial}</span>
+          <span className="dial-caret" aria-hidden="true">▾</span>
+        </button>
+
+        <input
+          type="tel"
+          id={id}
+          inputMode="tel"
+          autoComplete="tel-national"
+          placeholder="00000 00000"
+          required
+          value={number}
+          onChange={(e) => setNumber(e.target.value.replace(/[^\d\s-]/g, ""))}
+        />
+      </div>
+
+      {open && (
+        <div className="dial-menu" role="listbox">
+          <input
+            ref={searchRef}
+            type="text"
+            className="dial-search"
+            placeholder="Search country"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <div className="dial-list">
+            {results.map((c) => {
+              const isActive = c.iso === country.iso && c.dial === country.dial;
+              return (
+                <button
+                  key={`${c.iso}${c.dial}`}
+                  ref={isActive ? activeRef : undefined}
+                  type="button"
+                  role="option"
+                  aria-selected={isActive}
+                  className={`dial-option${isActive ? " active" : ""}`}
+                  onClick={() => choose(c)}
+                >
+                  <span className="dial-name">{c.name}</span>
+                  <span className="dial-num">{c.dial}</span>
+                </button>
+              );
+            })}
+            {results.length === 0 && <p className="dial-empty">No country found</p>}
+          </div>
+        </div>
+      )}
+
+      <input
+        type="hidden"
+        name="phone"
+        value={`${country.dial}${number.replace(/\D/g, "")}`}
+      />
     </div>
   );
 };
@@ -549,11 +780,9 @@ export default function Home() {
           document.body.appendChild(frame);
         }
 
-        /* normalise the phone number to E.164-ish with the India dial code */
-        const rawPhone = payload.phone.trim();
-        const phone = rawPhone.startsWith("+")
-          ? rawPhone
-          : `+91${rawPhone.replace(/^0+/, "").replace(/\s+/g, "")}`;
+        /* PhoneField already submits "dial + digits" (e.g. +919847012345).
+           Strip anything non-numeric that survived, keep the leading +. */
+        const phone = `+${payload.phone.replace(/\D/g, "")}`;
 
         /* build the Description that Bigin expects (mandatory field).
            Bigin only has four custom URL/UTM fields, so everything
@@ -826,10 +1055,7 @@ export default function Home() {
               <label htmlFor="b-company">Company / Brand</label>
               <input type="text" id="b-company" name="company" placeholder="Your company name" required />
             </div>
-            <div className="field">
-              <label htmlFor="b-phone">Phone / WhatsApp</label>
-              <input type="tel" id="b-phone" name="phone" placeholder="+91 00000 00000" required />
-            </div>
+            <PhoneField id="b-phone" label="Phone / WhatsApp" />
             <div className="field">
               <label htmlFor="b-email">Email</label>
               <input type="email" id="b-email" name="email" placeholder="you@brand.com" required />
@@ -846,8 +1072,8 @@ export default function Home() {
             <div className="field-row">
               <div className="field">
                 <label htmlFor="b-budget">Monthly / Project Budget</label>
-                <select id="b-budget" name="budget" defaultValue="" required>
-                  <option value="" disabled>Select a budget</option>
+                <select id="b-budget" name="budget" defaultValue="">
+                  <option value="">Select a budget (optional)</option>
                   {BUDGET_OPTIONS.map((b) => (
                     <option key={b}>{b}</option>
                   ))}
@@ -1405,6 +1631,90 @@ header.scrolled .menu-toggle span{background:var(--ivory);}
 .field select:focus,
 .field textarea:focus{border-color:var(--gold);}
 .field textarea{resize:none;}
+
+/* ---- Phone field with dial-code dropdown ---- */
+.phone-field{position:relative;}
+.phone-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border-bottom:1px solid var(--line);
+  transition:border-color .3s ease;
+}
+.phone-row:focus-within{border-color:var(--gold);}
+.phone-row input{border-bottom:none; flex:1; min-width:0;}
+.dial-trigger{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:transparent;
+  border:none;
+  border-right:1px solid var(--line);
+  padding:9px 12px 9px 2px;
+  font-family:'Jost', sans-serif;
+  font-size:14px;
+  color:var(--ivory);
+  cursor:pointer;
+  white-space:nowrap;
+  transition:color .25s ease;
+}
+.dial-trigger:hover{color:var(--gold);}
+.dial-caret{font-size:10px; color:var(--muted);}
+.dial-menu{
+  position:absolute;
+  z-index:40;
+  top:100%;
+  left:0;
+  width:100%;
+  max-width:340px;
+  margin-top:6px;
+  background:#ffffff;
+  border:1px solid var(--line);
+  box-shadow:0 24px 50px rgba(20,18,14,0.16);
+  display:flex;
+  flex-direction:column;
+  max-height:280px;
+}
+.dial-search{
+  width:100%;
+  border:none;
+  border-bottom:1px solid var(--line);
+  padding:12px 14px;
+  font-family:'Jost', sans-serif;
+  font-size:13px;
+  color:var(--ivory);
+  outline:none;
+}
+.dial-search::placeholder{color:var(--muted);}
+.dial-list{overflow-y:auto; flex:1;}
+.dial-option{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  width:100%;
+  background:transparent;
+  border:none;
+  border-bottom:1px solid rgba(0,0,0,0.05);
+  padding:11px 14px;
+  font-family:'Jost', sans-serif;
+  font-size:13.5px;
+  color:var(--ivory);
+  text-align:left;
+  cursor:pointer;
+  transition:background .2s ease;
+}
+.dial-option:hover{background:var(--gold-soft);}
+.dial-option.active{background:var(--gold-soft); color:var(--gold);}
+.dial-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.dial-num{color:var(--muted); flex-shrink:0;}
+.dial-option.active .dial-num{color:var(--gold);}
+.dial-empty{
+  padding:18px 14px;
+  text-align:center;
+  color:var(--muted);
+  font-size:13px;
+}
 .banner-form .btn-solid{width:100%; text-align:center; margin-top:6px;}
 .form-note{
   font-size:11px;
