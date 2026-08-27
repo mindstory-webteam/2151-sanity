@@ -365,6 +365,17 @@ export default function Home() {
   // campaign tracking captured from the URL
   const [tracking, setTracking] = useState<TrackingData>(EMPTY_TRACKING);
 
+  /* Debug mode: open the page with ?biginDebug=1 to show the normally
+     hidden iframe and skip the thank-you redirect, so Zoho's actual
+     response (success page or error message) stays on screen. */
+  const [debugBigin, setDebugBigin] = useState(false);
+
+  useEffect(() => {
+    setDebugBigin(
+      new URLSearchParams(window.location.search).get("biginDebug") === "1"
+    );
+  }, []);
+
   /* header scroll state */
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -623,6 +634,10 @@ export default function Home() {
           "Lead Source": biginLeadSource(tracking),
         };
 
+        if (debugBigin) {
+          console.table(fields);
+        }
+
         const form = document.createElement("form");
         form.method = "POST";
         form.action = BIGIN_ACTION;
@@ -717,6 +732,11 @@ export default function Home() {
     try {
       await sendToBigin(payload);
       await alsoSendToSheet();
+      if (debugBigin) {
+        /* stay on the page so the iframe response can be read */
+        setSubmitting(false);
+        return;
+      }
       goToThankYou(payload);
       /* keep the button in "Sending…" until the route changes */
     } catch (err) {
@@ -1039,14 +1059,24 @@ export default function Home() {
         <span className="dot"></span> Enquire Now
       </a>
 
-      {/* ===== HIDDEN TARGET FOR THE BIGIN POST ===== */}
+      {/* ===== TARGET FOR THE BIGIN POST (visible with ?biginDebug=1) ===== */}
       <iframe
         id={BIGIN_IFRAME_NAME}
         name={BIGIN_IFRAME_NAME}
         title="Bigin submission target"
-        aria-hidden="true"
+        aria-hidden={!debugBigin}
         tabIndex={-1}
-        style={{ display: "none", width: 0, height: 0, border: 0 }}
+        style={
+          debugBigin
+            ? {
+                display: "block",
+                width: "100%",
+                height: 420,
+                border: "2px solid #e2231a",
+                margin: "40px 0",
+              }
+            : { display: "none", width: 0, height: 0, border: 0 }
+        }
       />
     </>
   );
@@ -1653,60 +1683,6 @@ footer ul a:hover{color:var(--gold); opacity:1;}
   0%,100%{opacity:1;} 50%{opacity:0.25;}
 }
 
-/* ===== MODAL POPUP ===== */
-.modal-overlay{
-  position:fixed; inset:0;
-  background:rgba(6,6,7,0.82);
-  backdrop-filter:blur(6px);
-  z-index:300;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  opacity:0;
-  pointer-events:none;
-  transition:opacity .35s ease;
-  padding:20px;
-}
-.modal-overlay.active{opacity:1; pointer-events:auto;}
-.modal-box{
-  background:#ffffff;
-  border:1px solid var(--line);
-  box-shadow:0 30px 80px rgba(20,18,14,0.18);
-  width:100%;
-  max-width:600px;
-  padding:50px 56px;
-  position:relative;
-  transform:translateY(24px) scale(0.98);
-  transition:transform .35s ease;
-  max-height:90vh;
-  overflow-y:auto;
-}
-.modal-overlay.active .modal-box{transform:translateY(0) scale(1);}
-.modal-box::before{
-  content:"";
-  position:absolute; top:0; left:0;
-  width:100%; height:2px;
-  background:linear-gradient(90deg, var(--gold), transparent);
-}
-.modal-close{
-  position:absolute; top:20px; right:20px;
-  background:none; border:none;
-  color:var(--muted);
-  font-size:22px;
-  cursor:pointer;
-  line-height:1;
-  transition:color .2s ease, transform .2s ease;
-}
-.modal-close:hover{color:var(--gold); transform:rotate(90deg);}
-.modal-box .eyebrow{margin-bottom:14px;}
-.modal-box h3{
-  font-size:32px;
-  font-style:italic;
-  margin-bottom:8px;
-}
-.modal-box .sub{color:var(--muted); font-size:13.5px; margin-bottom:28px;}
-.modal-box .btn-solid{width:100%; text-align:center; margin-top:8px;}
-
 /* ===== RESPONSIVE ===== */
 @media(max-width:960px){
   .hero-grid{grid-template-columns:1fr;}
@@ -1728,7 +1704,6 @@ footer ul a:hover{color:var(--gold); opacity:1;}
   .process-grid{grid-template-columns:1fr;}
   .footer-grid{grid-template-columns:1fr;}
   .float-btn{right:16px; bottom:16px; padding:14px 20px; font-size:10px;}
-  .modal-box{padding:36px 24px;}
   .service-row{min-height:160px; padding:38px 16px;}
   .banner-form{padding:30px 22px;}
   .field-row{grid-template-columns:1fr;}
@@ -1750,7 +1725,6 @@ footer ul a:hover{color:var(--gold); opacity:1;}
   .stat-row{gap:20px;}
   .stat b{font-size:34px;}
   .footer-bottom{flex-direction:column; align-items:flex-start;}
-  .modal-box{padding:30px 18px;}
 }
 @media (prefers-reduced-motion: reduce){
   *{animation:none !important; transition:none !important;}
