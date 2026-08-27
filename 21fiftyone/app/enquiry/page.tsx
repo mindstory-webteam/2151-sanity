@@ -9,17 +9,16 @@ const SHEET_ENDPOINT = process.env.NEXT_PUBLIC_SHEET_ENDPOINT ?? "";
 /* =========================================================
    ZOHO BIGIN — WEB TO RECORD CONFIG
    ---------------------------------------------------------
-   NOTE: the <form action="..."> line was cut off in the embed
-   code you shared. Open your Bigin webform HTML, find:
-        <form ... action='https://bigin.zoho.com/crm/WebToRecordForm' ...>
-   and paste that exact URL into BIGIN_ACTION below.
+   Values below come from the "2151 Get Quote" Bigin webform.
+   The webform script is served from bigin.zoho.com, so the
+   POST endpoint is https://bigin.zoho.com/crm/WebToRecordForm
    (.in / .eu / .com.au accounts use a different domain.)
    ========================================================= */
 const BIGIN_ACTION = "https://bigin.zoho.com/crm/WebToRecordForm";
 const BIGIN_XNQSJSDP =
-  "af6f81c584c217062046341398aea84b365dccb84adfcccc5dcfe47a173e8207";
+  "02c968b7a944c9b62a557ab89f5d5af9aa2368d873db16baa0b917eace765312";
 const BIGIN_XMIWTLD =
-  "9412ef8e6da1fc62f60a74f8ffb30e9ff1e680d890ab8ab987e86f2154267ab6dd1dcbd5138ff5ebc90cc8c7587b461b";
+  "4c114c3a8f05e6c49db3b02d6c880c8a0895a98f5c56091f114c0840fe253a017556f596a0fe7b09a643bfd0ee3b1ce8";
 const BIGIN_ACTION_TYPE = "UG90ZW50aWFscw==";
 const BIGIN_PIPELINE = "Sales Pipeline Standard 2";
 const BIGIN_STAGE = "Qualification";
