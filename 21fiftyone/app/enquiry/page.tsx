@@ -1,37 +1,29 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation"; // NEW
+import React, { useEffect, useRef, useState } from "react";
 
-
-const SHEET_ENDPOINT = process.env.NEXT_PUBLIC_SHEET_ENDPOINT ?? "";
 
 /* =========================================================
-   ZOHO BIGIN — WEB TO RECORD CONFIG
+   ZOHO BIGIN — HOSTED FORM EMBED
    ---------------------------------------------------------
-   Values below come from the "MS Get Quote" Bigin webform.
-   The webform script is served from bigin.zoho.com, so the
-   POST endpoint is https://bigin.zoho.com/crm/WebToRecordForm
-   (.in / .eu / .com.au accounts use a different domain.)
+   This account lives on us.bigin.online, not bigin.zoho.com.
+   That is why the earlier hand-built POST to
+   bigin.zoho.com/crm/WebToRecordForm never created records:
+   right payload, wrong data centre.
 
-   IMPORTANT: this form has reCAPTCHA enabled in Bigin. A
-   background POST cannot produce a captcha token, so Zoho will
-   reject every submission until reCAPTCHA is switched off in
-   Setup > Developer Hub > Webforms > MS Get Quote.
+   Embedding Zoho's own hosted form removes that whole class of
+   problem. Their script carries the correct endpoint, the
+   security tokens, field validation and the reCAPTCHA, so the
+   lead is guaranteed to reach the pipeline.
    ========================================================= */
-const BIGIN_ACTION = "https://bigin.zoho.com/crm/WebToRecordForm";
-const BIGIN_XNQSJSDP =
-  "98ea7a89a13df0f9f658580a9c875ee0d21ba946b68372ddf0da4593eef8fd0d";
-const BIGIN_XMIWTLD =
-  "81a6928171067053d2d0cf6ca3a3a766a669f320f445ceae5ed81fcabe8440f54d3dee36d6eeb852887b36e4cbe363b7";
-const BIGIN_ACTION_TYPE = "UG90ZW50aWFscw==";
-const BIGIN_PIPELINE = "Sales Pipeline Standard";
-const BIGIN_STAGE = "Qualification";
-const BIGIN_LEAD_SOURCE = "Official Website";
-const BIGIN_IFRAME_NAME = "bigin_post_frame";
+const BIGIN_FORM_SCRIPT_ID = "formScript7522188000000639254";
+const BIGIN_FORM_SRC =
+  "https://us.bigin.online/org935134661/forms/2151-get-quote?script=$sYG";
 
-/* NEW: where users land after a successful enquiry */
-const THANK_YOU_PATH = "/thank-you";
+/* Zoho's hosted form can be prefilled through the query string using
+   the field API names. Set this to false if the form ever fails to
+   render — an unexpected parameter is the first thing to rule out. */
+const PREFILL_TRACKING = true;
 
 interface ServiceItem {
   tc: string;
@@ -79,43 +71,6 @@ const SERVICES: ServiceItem[] = [
   },
 ];
 
-const SERVICE_OPTIONS = [
-  "Visual Production",
-  "Movie Production",
-  "Corporate Films",
-  "Commercial Production",
-  "AI Production",
-  "Entertainment Events",
-];
-
-/* Bigin picklist values for POTENTIALCF3 / POTENTIALCF2 — must match exactly */
-const BUDGET_OPTIONS = [
-  "Below ₹25K",
-  "₹25K–₹50K",
-  "₹50K–₹1L",
-  "₹1L–₹3L",
-  "₹3L+",
-];
-
-const TIMELINE_OPTIONS = [
-  "Immediately",
-  "Within 30 days",
-  "1–3 months",
-  "Just Exploring",
-];
-
-/* Website service names -> Bigin "Service Interested In?" picklist values.
-   Bigin rejects any value that is not in the picklist, so we translate.
-   The original selection is still kept inside the Description. */
-const SERVICE_TO_BIGIN: Record<string, string> = {
-  "Visual Production": "Video Production",
-  "Movie Production": "Video Production",
-  "Corporate Films": "Video Production",
-  "Commercial Production": "Video Production",
-  "AI Production": "AI Videos",
-  "Entertainment Events": "Video Production",
-};
-
 /* ---------- Service row with hover-video behaviour ---------- */
 const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -150,231 +105,42 @@ const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
   );
 };
 
-/* ---------- Country dial codes (same list Zoho's webform uses) ---------- */
-type Country = { iso: string; name: string; dial: string };
+/* ---------- Zoho Bigin hosted form ----------
+   Zoho's script inserts the form immediately after itself, so it is
+   appended inside our own container rather than at the end of <body>.
+   The guard matters: React StrictMode mounts effects twice in dev, and
+   without it you get two forms stacked on top of each other. */
+const BiginForm: React.FC<{ tracking: TrackingData }> = ({ tracking }) => {
+  const holderRef = useRef<HTMLDivElement>(null);
+  const loadedRef = useRef(false);
 
-const COUNTRIES: Country[] = (
-  [
-    ["af", "Afghanistan", "93"], ["al", "Albania", "355"], ["dz", "Algeria", "213"],
-    ["as", "American Samoa", "1684"], ["ad", "Andorra", "376"], ["ao", "Angola", "244"],
-    ["ai", "Anguilla", "1264"], ["aq", "Antarctica", "672"], ["ag", "Antigua & Barbuda", "1268"],
-    ["ar", "Argentina", "54"], ["am", "Armenia", "374"], ["aw", "Aruba", "297"],
-    ["au", "Australia", "61"], ["at", "Austria", "43"], ["az", "Azerbaijan", "994"],
-    ["bs", "Bahamas", "1242"], ["bh", "Bahrain", "973"], ["bd", "Bangladesh", "880"],
-    ["bb", "Barbados", "1246"], ["by", "Belarus", "375"], ["be", "Belgium", "32"],
-    ["bz", "Belize", "501"], ["bj", "Benin", "229"], ["bm", "Bermuda", "1441"],
-    ["bt", "Bhutan", "975"], ["bo", "Bolivia", "591"], ["ba", "Bosnia and Herzegovina", "387"],
-    ["bw", "Botswana", "267"], ["bv", "Bouvet Island", "47"], ["br", "Brazil", "55"],
-    ["io", "British Indian Ocean Territory", "246"], ["vg", "British Virgin Islands", "1284"],
-    ["bn", "Brunei", "673"], ["bg", "Bulgaria", "359"], ["bf", "Burkina Faso", "226"],
-    ["bi", "Burundi", "257"], ["kh", "Cambodia", "855"], ["cm", "Cameroon", "237"],
-    ["ca", "Canada", "1"], ["cv", "Cape Verde", "238"], ["bq", "Caribbean Netherlands", "599"],
-    ["ky", "Cayman Islands", "1345"], ["cf", "Central African Republic", "236"],
-    ["td", "Chad", "235"], ["cl", "Chile", "56"], ["cn", "China", "86"],
-    ["cx", "Christmas Island", "61"], ["cc", "Cocos (Keeling) Island", "61"],
-    ["co", "Colombia", "57"], ["km", "Comoros", "269"], ["cg", "Congo - Brazzaville", "242"],
-    ["cd", "Congo - Kinshasa", "243"], ["ck", "Cook Islands", "682"], ["cr", "Costa Rica", "506"],
-    ["hr", "Croatia", "385"], ["cu", "Cuba", "53"], ["cw", "Curaçao", "599"],
-    ["cy", "Cyprus", "357"], ["cz", "Czechia", "420"], ["ci", "Côte d'Ivoire", "225"],
-    ["dk", "Denmark", "45"], ["dj", "Djibouti", "253"], ["dm", "Dominica", "1767"],
-    ["do", "Dominican Republic", "1"], ["ec", "Ecuador", "593"], ["eg", "Egypt", "20"],
-    ["sv", "El Salvador", "503"], ["gq", "Equatorial Guinea", "240"], ["er", "Eritrea", "291"],
-    ["ee", "Estonia", "372"], ["et", "Ethiopia", "251"], ["fk", "Falkland Islands", "500"],
-    ["fo", "Faroe Islands", "298"], ["fj", "Fiji", "679"], ["fi", "Finland", "358"],
-    ["fr", "France", "33"], ["gf", "French Guiana", "594"], ["pf", "French Polynesia", "689"],
-    ["tf", "French Southern Territories", "262"], ["ga", "Gabon", "241"], ["gm", "Gambia", "220"],
-    ["ge", "Georgia", "995"], ["de", "Germany", "49"], ["gh", "Ghana", "233"],
-    ["gi", "Gibraltar", "350"], ["gr", "Greece", "30"], ["gl", "Greenland", "299"],
-    ["gd", "Grenada", "1473"], ["gp", "Guadeloupe", "590"], ["gu", "Guam", "1671"],
-    ["gt", "Guatemala", "502"], ["gg", "Guernsey", "44"], ["gn", "Guinea", "224"],
-    ["gw", "Guinea-Bissau", "245"], ["gy", "Guyana", "592"], ["ht", "Haiti", "509"],
-    ["hm", "Heard & McDonald Islands", "672"], ["hn", "Honduras", "504"],
-    ["hk", "Hong Kong", "852"], ["hu", "Hungary", "36"], ["is", "Iceland", "354"],
-    ["in", "India", "91"], ["id", "Indonesia", "62"], ["ir", "Iran", "98"],
-    ["iq", "Iraq", "964"], ["ie", "Ireland", "353"], ["im", "Isle of Man", "44"],
-    ["il", "Israel", "972"], ["it", "Italy", "39"], ["jm", "Jamaica", "1876"],
-    ["jp", "Japan", "81"], ["je", "Jersey", "44"], ["jo", "Jordan", "962"],
-    ["kz", "Kazakhstan", "7"], ["ke", "Kenya", "254"], ["ki", "Kiribati", "686"],
-    ["xk", "Kosovo", "383"], ["kw", "Kuwait", "965"], ["kg", "Kyrgyzstan", "996"],
-    ["la", "Laos", "856"], ["lv", "Latvia", "371"], ["lb", "Lebanon", "961"],
-    ["ls", "Lesotho", "266"], ["lr", "Liberia", "231"], ["ly", "Libya", "218"],
-    ["li", "Liechtenstein", "423"], ["lt", "Lithuania", "370"], ["lu", "Luxembourg", "352"],
-    ["mo", "Macao", "853"], ["mk", "Macedonia", "389"], ["mg", "Madagascar", "261"],
-    ["mw", "Malawi", "265"], ["my", "Malaysia", "60"], ["mv", "Maldives", "960"],
-    ["ml", "Mali", "223"], ["mt", "Malta", "356"], ["mh", "Marshall Islands", "692"],
-    ["mq", "Martinique", "596"], ["mr", "Mauritania", "222"], ["mu", "Mauritius", "230"],
-    ["yt", "Mayotte", "262"], ["mx", "Mexico", "52"], ["fm", "Micronesia", "691"],
-    ["md", "Moldova", "373"], ["mc", "Monaco", "377"], ["mn", "Mongolia", "976"],
-    ["me", "Montenegro", "382"], ["ms", "Montserrat", "1664"], ["ma", "Morocco", "212"],
-    ["mz", "Mozambique", "258"], ["mm", "Myanmar (Burma)", "95"], ["na", "Namibia", "264"],
-    ["nr", "Nauru", "674"], ["np", "Nepal", "977"], ["nl", "Netherlands", "31"],
-    ["nc", "New Caledonia", "687"], ["nz", "New Zealand", "64"], ["ni", "Nicaragua", "505"],
-    ["ne", "Niger", "227"], ["ng", "Nigeria", "234"], ["nu", "Niue", "683"],
-    ["nf", "Norfolk Island", "672"], ["kp", "North Korea", "850"],
-    ["mp", "Northern Mariana Islands", "1670"], ["no", "Norway", "47"], ["om", "Oman", "968"],
-    ["pk", "Pakistan", "92"], ["pw", "Palau", "680"], ["ps", "Palestinian Territories", "970"],
-    ["pa", "Panama", "507"], ["pg", "Papua New Guinea", "675"], ["py", "Paraguay", "595"],
-    ["pe", "Peru", "51"], ["ph", "Philippines", "63"], ["pn", "Pitcairn Islands", "64"],
-    ["pl", "Poland", "48"], ["pt", "Portugal", "351"], ["pr", "Puerto Rico", "1"],
-    ["qa", "Qatar", "974"], ["ro", "Romania", "40"], ["ru", "Russia", "7"],
-    ["rw", "Rwanda", "250"], ["re", "Réunion", "262"], ["ws", "Samoa", "685"],
-    ["sm", "San Marino", "378"], ["sa", "Saudi Arabia", "966"], ["sn", "Senegal", "221"],
-    ["rs", "Serbia", "381"], ["sc", "Seychelles", "248"], ["sl", "Sierra Leone", "232"],
-    ["sg", "Singapore", "65"], ["sx", "Sint Maarten", "1721"], ["sk", "Slovakia", "421"],
-    ["si", "Slovenia", "386"], ["sb", "Solomon Islands", "677"], ["so", "Somalia", "252"],
-    ["za", "South Africa", "27"],
-    ["gs", "South Georgia & South Sandwich Islands", "500"], ["kr", "South Korea", "82"],
-    ["ss", "South Sudan", "211"], ["es", "Spain", "34"], ["lk", "Sri Lanka", "94"],
-    ["bl", "St Barthélemy", "590"], ["sh", "St Helena", "290"],
-    ["kn", "St Kitts & Nevis", "1869"], ["lc", "St Lucia", "1758"], ["mf", "St Martin", "590"],
-    ["pm", "St Pierre & Miquelon", "508"], ["vc", "St Vincent & Grenadines", "1784"],
-    ["sd", "Sudan", "249"], ["sr", "Suriname", "597"], ["sj", "Svalbard & Jan Mayen", "47"],
-    ["sz", "Swaziland", "268"], ["se", "Sweden", "46"], ["ch", "Switzerland", "41"],
-    ["sy", "Syria", "963"], ["st", "São Tomé & Príncipe", "239"], ["tw", "Taiwan", "886"],
-    ["tj", "Tajikistan", "992"], ["tz", "Tanzania", "255"], ["th", "Thailand", "66"],
-    ["tl", "Timor-Leste", "670"], ["tg", "Togo", "228"], ["tk", "Tokelau", "690"],
-    ["to", "Tonga", "676"], ["tt", "Trinidad & Tobago", "1868"], ["tn", "Tunisia", "216"],
-    ["tr", "Turkey", "90"], ["tm", "Turkmenistan", "993"],
-    ["tc", "Turks & Caicos Islands", "1"], ["tv", "Tuvalu", "688"],
-    ["um", "US Outlying Islands", "1"], ["vi", "US Virgin Islands", "1340"],
-    ["ug", "Uganda", "256"], ["ua", "Ukraine", "380"],
-    ["ae", "United Arab Emirates", "971"], ["gb", "United Kingdom", "44"],
-    ["us", "United States", "1"], ["uy", "Uruguay", "598"], ["uz", "Uzbekistan", "998"],
-    ["vu", "Vanuatu", "678"], ["va", "Vatican City", "379"], ["ve", "Venezuela", "58"],
-    ["vn", "Vietnam", "84"], ["wf", "Wallis & Futuna", "681"],
-    ["eh", "Western Sahara", "212"], ["ye", "Yemen", "967"], ["zm", "Zambia", "260"],
-    ["zw", "Zimbabwe", "263"], ["ax", "Åland Islands", "358"],
-  ] as [string, string, string][]
-).map(([iso, name, dial]) => ({ iso, name, dial: `+${dial}` }));
-
-const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.iso === "in") ?? COUNTRIES[0];
-
-/* ---------- Phone input with a searchable dial-code dropdown ----------
-   The visible number box is deliberately unnamed. A hidden input carries
-   "dial + digits" under name="phone", so FormData picks up a single clean
-   E.164 value and Bigin receives exactly what it expects. */
-const PhoneField: React.FC<{ id: string; label: string }> = ({ id, label }) => {
-  const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
-  const [number, setNumber] = useState("");
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const activeRef = useRef<HTMLButtonElement>(null);
-
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return COUNTRIES;
-    return COUNTRIES.filter(
-      (c) => c.name.toLowerCase().includes(q) || c.dial.includes(q)
-    );
-  }, [query]);
-
-  /* close on outside click or Escape */
   useEffect(() => {
-    if (!open) return;
+    const holder = holderRef.current;
+    if (!holder || loadedRef.current) return;
+    loadedRef.current = true;
 
-    const onClick = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
+    let src = BIGIN_FORM_SRC;
 
-    document.addEventListener("mousedown", onClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onClick);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+    if (PREFILL_TRACKING) {
+      const extra = new URLSearchParams();
+      if (tracking.leadPageUrl) extra.set("POTENTIALCF4", tracking.leadPageUrl);
+      if (tracking.utmSource) extra.set("POTENTIALCF5", tracking.utmSource);
+      if (tracking.utmContent) extra.set("POTENTIALCF6", tracking.utmContent);
+      if (tracking.utmCampaign) extra.set("POTENTIALCF7", tracking.utmCampaign);
+      const qs = extra.toString();
+      if (qs) src += `&${qs}`;
+    }
 
-  /* focus the search box and bring the current country into view */
-  useEffect(() => {
-    if (!open) return;
-    searchRef.current?.focus();
-    activeRef.current?.scrollIntoView({ block: "center" });
-  }, [open]);
+    const script = document.createElement("script");
+    script.id = BIGIN_FORM_SCRIPT_ID;
+    script.src = src;
+    script.async = true;
+    holder.appendChild(script);
+  }, [tracking]);
 
-  const choose = (c: Country) => {
-    setCountry(c);
-    setOpen(false);
-    setQuery("");
-  };
-
-  return (
-    <div className="field phone-field" ref={wrapRef}>
-      <label htmlFor={id}>{label}</label>
-
-      <div className="phone-row">
-        <button
-          type="button"
-          className="dial-trigger"
-          onClick={() => setOpen((o) => !o)}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-label={`Country code, currently ${country.name} ${country.dial}`}
-        >
-          <span>{country.dial}</span>
-          <span className="dial-caret" aria-hidden="true">▾</span>
-        </button>
-
-        <input
-          type="tel"
-          id={id}
-          inputMode="tel"
-          autoComplete="tel-national"
-          placeholder="00000 00000"
-          required
-          value={number}
-          onChange={(e) => setNumber(e.target.value.replace(/[^\d\s-]/g, ""))}
-        />
-      </div>
-
-      {open && (
-        <div className="dial-menu" role="listbox">
-          <input
-            ref={searchRef}
-            type="text"
-            className="dial-search"
-            placeholder="Search country"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <div className="dial-list">
-            {results.map((c) => {
-              const isActive = c.iso === country.iso && c.dial === country.dial;
-              return (
-                <button
-                  key={`${c.iso}${c.dial}`}
-                  ref={isActive ? activeRef : undefined}
-                  type="button"
-                  role="option"
-                  aria-selected={isActive}
-                  className={`dial-option${isActive ? " active" : ""}`}
-                  onClick={() => choose(c)}
-                >
-                  <span className="dial-name">{c.name}</span>
-                  <span className="dial-num">{c.dial}</span>
-                </button>
-              );
-            })}
-            {results.length === 0 && <p className="dial-empty">No country found</p>}
-          </div>
-        </div>
-      )}
-
-      <input
-        type="hidden"
-        name="phone"
-        value={`${country.dial}${number.replace(/\D/g, "")}`}
-      />
-    </div>
-  );
+  return <div className="bigin-form" id="enquire" ref={holderRef} />;
 };
+
 
 /* =========================================================
    TRACKING — UTM, click IDs and referrer attribution
@@ -557,55 +323,12 @@ const buildTouch = (params: URLSearchParams, referrer: string): TrackingData => 
   };
 };
 
-/* Map the traffic back onto Bigin's "Lead Source" picklist.
-   Only values that exist in the picklist may be returned — Bigin
-   silently drops the field otherwise. */
-const biginLeadSource = (t: TrackingData): string => {
-  const source = t.utmSource.toLowerCase();
-  const medium = t.utmMedium.toLowerCase();
-  const isPaid = /cpc|ppc|paid|ads|sem|display|banner/.test(medium);
-
-  if (t.gclid || (source.includes("google") && isPaid)) return "Google Ads";
-  if (t.msclkid) return "Advertisement";
-  if (
-    isPaid &&
-    (source.includes("facebook") ||
-      source.includes("instagram") ||
-      source.includes("meta") ||
-      source === "fb" ||
-      source === "ig")
-  ) {
-    return "Meta Ads";
-  }
-  if (source.includes("whatsapp")) {
-    return t.utmCampaign ? "WhatsApp Campaign" : "WhatsApp Organic";
-  }
-  return BIGIN_LEAD_SOURCE; // Official Website
-};
-
 /* ============================ PAGE ============================ */
 export default function Home() {
-  const router = useRouter(); // NEW
-
   const [scrolled, setScrolled] = useState(false);
-
-  // submission-in-progress + error state for the enquiry form
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(false);
 
   // campaign tracking captured from the URL
   const [tracking, setTracking] = useState<TrackingData>(EMPTY_TRACKING);
-
-  /* Debug mode: open the page with ?biginDebug=1 to show the normally
-     hidden iframe and skip the thank-you redirect, so Zoho's actual
-     response (success page or error message) stays on screen. */
-  const [debugBigin, setDebugBigin] = useState(false);
-
-  useEffect(() => {
-    setDebugBigin(
-      new URLSearchParams(window.location.search).get("biginDebug") === "1"
-    );
-  }, []);
 
   /* header scroll state */
   useEffect(() => {
@@ -613,11 +336,6 @@ export default function Home() {
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  /* NEW: warm up the thank-you route so the redirect is instant */
-  useEffect(() => {
-    router.prefetch(THANK_YOU_PATH);
-  }, [router]);
 
   /* ---------------------------------------------------------
      Capture campaign attribution.
@@ -723,258 +441,6 @@ export default function Home() {
     }
   }, []);
 
-  /* ---------------------------------------------------------
-     Sends the form payload to the Google Apps Script Web App,
-     which appends a row into the connected Google Sheet.
-     --------------------------------------------------------- */
-  const sendToSheet = async (payload: Record<string, unknown>) => {
-    if (!SHEET_ENDPOINT) {
-      console.error(
-        "NEXT_PUBLIC_SHEET_ENDPOINT is not set. Add it to your .env.local file."
-      );
-      throw new Error("Missing SHEET_ENDPOINT");
-    }
-    await fetch(SHEET_ENDPOINT, {
-      method: "POST",
-      // Apps Script web apps don't return CORS headers fetch can
-      // read, so we fire the request in no-cors mode. The row is
-      // still written to the sheet — we just can't inspect the
-      // response body here.
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
-    });
-  };
-
-  /* ---------------------------------------------------------
-     Sends the same payload to Zoho Bigin (Web to Record).
-     Zoho does not send CORS headers, so a normal fetch() can
-     never reach it from the browser. We instead build a real
-     <form> in memory and POST it into a hidden iframe — the
-     record is created in Bigin and the page never navigates.
-     --------------------------------------------------------- */
-  const sendToBigin = (payload: {
-    source: string;
-    name: string;
-    company: string;
-    phone: string;
-    email: string;
-    service: string;
-    budget: string;
-    timeline: string;
-    message: string;
-  }) =>
-    new Promise<void>((resolve, reject) => {
-      try {
-        /* make sure the hidden iframe exists */
-        let frame = document.getElementById(
-          BIGIN_IFRAME_NAME
-        ) as HTMLIFrameElement | null;
-
-        if (!frame) {
-          frame = document.createElement("iframe");
-          frame.id = BIGIN_IFRAME_NAME;
-          frame.name = BIGIN_IFRAME_NAME;
-          frame.style.display = "none";
-          frame.setAttribute("aria-hidden", "true");
-          document.body.appendChild(frame);
-        }
-
-        /* PhoneField already submits "dial + digits" (e.g. +919847012345).
-           Strip anything non-numeric that survived, keep the leading +. */
-        const phone = `+${payload.phone.replace(/\D/g, "")}`;
-
-        /* build the Description that Bigin expects (mandatory field).
-           Bigin only has four custom URL/UTM fields, so everything
-           else that matters for attribution is written here. */
-        const descriptionParts = [
-          payload.message?.trim() || "No additional details provided.",
-          `Selected service on website: ${payload.service}`,
-          `Submitted from: Website enquiry form`,
-          "",
-          "--- Attribution ---",
-          `Source / Medium: ${tracking.utmSource || "direct"} / ${tracking.utmMedium || "none"}`,
-        ];
-        if (tracking.utmCampaign) {
-          descriptionParts.push(`Campaign: ${tracking.utmCampaign}`);
-        }
-        if (tracking.utmContent) {
-          descriptionParts.push(`Ad content: ${tracking.utmContent}`);
-        }
-        if (tracking.utmTerm) {
-          descriptionParts.push(`Keyword (utm_term): ${tracking.utmTerm}`);
-        }
-        if (tracking.gclid) {
-          descriptionParts.push(`Google click ID: ${tracking.gclid}`);
-        }
-        if (tracking.fbclid) {
-          descriptionParts.push(`Meta click ID: ${tracking.fbclid}`);
-        }
-        if (tracking.msclkid) {
-          descriptionParts.push(`Microsoft click ID: ${tracking.msclkid}`);
-        }
-        if (tracking.referrer) {
-          descriptionParts.push(`Referrer: ${tracking.referrer}`);
-        }
-        if (
-          tracking.landingPageUrl &&
-          tracking.landingPageUrl !== tracking.leadPageUrl
-        ) {
-          descriptionParts.push(`Landing page: ${tracking.landingPageUrl}`);
-        }
-        if (tracking.firstTouchSource) {
-          const firstCampaign = tracking.firstTouchCampaign
-            ? ` (${tracking.firstTouchCampaign})`
-            : "";
-          descriptionParts.push(
-            `First touch: ${tracking.firstTouchSource} / ${tracking.firstTouchMedium || "none"}${firstCampaign} on ${tracking.firstTouchDate}`
-          );
-        }
-        descriptionParts.push(`Submitted at: ${new Date().toLocaleString("en-IN")}`);
-
-        const fields: Record<string, string> = {
-          xnQsjsdp: BIGIN_XNQSJSDP,
-          /* zc_gad is Zoho's Google Ads click field — feeding the
-             gclid here lets Bigin tie the deal back to the ad */
-          zc_gad: tracking.gclid,
-          xmIwtLD: BIGIN_XMIWTLD,
-          actionType: BIGIN_ACTION_TYPE,
-          returnURL: "null",
-
-          "Potential Name": payload.name,
-          "Accounts.Account Name": payload.company?.trim() || payload.name,
-          "Contacts.Mobile": phone,
-          "Contacts.Email": payload.email,
-
-          POTENTIALCF1: SERVICE_TO_BIGIN[payload.service] ?? "Video Production",
-          POTENTIALCF3: payload.budget,
-          POTENTIALCF2: payload.timeline,
-          Description: descriptionParts.join("\n"),
-
-          /* all four are 255-char fields in Bigin */
-          POTENTIALCF4: clip(tracking.leadPageUrl),
-          POTENTIALCF7: clip(tracking.utmCampaign),
-          POTENTIALCF5: clip(tracking.utmSource),
-          POTENTIALCF6: clip(tracking.utmContent),
-
-          Pipeline: BIGIN_PIPELINE,
-          Stage: BIGIN_STAGE,
-          /* Google Ads / Meta Ads / WhatsApp / Official Website */
-          "Lead Source": biginLeadSource(tracking),
-        };
-
-        if (debugBigin) {
-          console.table(fields);
-        }
-
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = BIGIN_ACTION;
-        form.target = BIGIN_IFRAME_NAME;
-        form.acceptCharset = "UTF-8";
-        form.style.display = "none";
-
-        Object.entries(fields).forEach(([key, value]) => {
-          const input = document.createElement("input");
-          input.type = "hidden";
-          input.name = key;
-          input.value = value ?? "";
-          form.appendChild(input);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
-
-        /* the iframe is cross-origin, so we can't read its load event
-           reliably — give the POST a moment, then clean up. */
-        window.setTimeout(() => {
-          form.remove();
-          resolve();
-        }, 900);
-      } catch (err) {
-        reject(err);
-      }
-    });
-
-  /* ---------------------------------------------------------
-     NEW: navigate to the thank-you page. The name / service /
-     source travel in the query string so the page can
-     personalise itself and fire conversion events.
-     --------------------------------------------------------- */
-  const goToThankYou = (p: { name: string; service: string; source: string }) => {
-    const q = new URLSearchParams({
-      name: p.name,
-      service: p.service,
-      from: p.source,
-    });
-    router.push(`${THANK_YOU_PATH}?${q.toString()}`);
-  };
-
-  /* form submit — posts to Zoho Bigin (and Google Sheets if configured),
-     then redirects to /thank-you */
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-
-    const payload = {
-      source: "banner",
-      name: String(formData.get("name") ?? ""),
-      company: String(formData.get("company") ?? ""),
-      phone: String(formData.get("phone") ?? ""),
-      email: String(formData.get("email") ?? ""),
-      service: String(formData.get("service") ?? ""),
-      budget: String(formData.get("budget") ?? ""),
-      timeline: String(formData.get("timeline") ?? ""),
-      message: String(formData.get("message") ?? ""),
-      submittedAt: new Date().toISOString(),
-      leadSource: biginLeadSource(tracking),
-      leadPageUrl: tracking.leadPageUrl,
-      landingPageUrl: tracking.landingPageUrl,
-      referrer: tracking.referrer,
-      utmSource: tracking.utmSource,
-      utmMedium: tracking.utmMedium,
-      utmCampaign: tracking.utmCampaign,
-      utmContent: tracking.utmContent,
-      utmTerm: tracking.utmTerm,
-      gclid: tracking.gclid,
-      fbclid: tracking.fbclid,
-      msclkid: tracking.msclkid,
-      firstTouchSource: tracking.firstTouchSource,
-      firstTouchMedium: tracking.firstTouchMedium,
-      firstTouchCampaign: tracking.firstTouchCampaign,
-      firstTouchDate: tracking.firstTouchDate,
-    };
-
-    /* Bigin is the system of record — Google Sheets is a best-effort
-       backup and must never block or fail the submission. */
-    const alsoSendToSheet = async () => {
-      if (!SHEET_ENDPOINT) return;
-      try {
-        await sendToSheet(payload);
-      } catch (err) {
-        console.error("Sheet backup failed (CRM still received the lead):", err);
-      }
-    };
-
-    setSubmitting(true);
-    setSubmitError(false);
-    try {
-      await sendToBigin(payload);
-      await alsoSendToSheet();
-      if (debugBigin) {
-        /* stay on the page so the iframe response can be read */
-        setSubmitting(false);
-        return;
-      }
-      goToThankYou(payload);
-      /* keep the button in "Sending…" until the route changes */
-    } catch (err) {
-      console.error("Form submission failed:", err);
-      setSubmitError(true);
-      setSubmitting(false);
-    }
-  };
-
   return (
     <>
       <style>{css}</style>
@@ -1040,74 +506,15 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ENQUIRY FORM */}
-          <form className="banner-form" id="enquire" onSubmit={handleSubmit}>
+          {/* ===== ENQUIRY FORM (hosted by Zoho Bigin) ===== */}
+          <div className="form-panel">
             <h3>Start Your Story</h3>
             <p className="sub">
               Tell us about your project — our studio will call you back within 24 hours.
             </p>
-
-            <div className="field">
-              <label htmlFor="b-name">Full Name</label>
-              <input type="text" id="b-name" name="name" placeholder="Your name" required />
-            </div>
-            <div className="field">
-              <label htmlFor="b-company">Company / Brand</label>
-              <input type="text" id="b-company" name="company" placeholder="Your company name" required />
-            </div>
-            <PhoneField id="b-phone" label="Phone / WhatsApp" />
-            <div className="field">
-              <label htmlFor="b-email">Email</label>
-              <input type="email" id="b-email" name="email" placeholder="you@brand.com" required />
-            </div>
-            <div className="field">
-              <label htmlFor="b-service">Project Type</label>
-              <select id="b-service" name="service" defaultValue="" required>
-                <option value="" disabled>Select a service</option>
-                {SERVICE_OPTIONS.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="b-budget">Monthly / Project Budget</label>
-                <select id="b-budget" name="budget" defaultValue="">
-                  <option value="">Select a budget (optional)</option>
-                  {BUDGET_OPTIONS.map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="b-timeline">When do you want to start?</label>
-                <select id="b-timeline" name="timeline" defaultValue="" required>
-                  <option value="" disabled>Select a timeline</option>
-                  {TIMELINE_OPTIONS.map((t) => (
-                    <option key={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="field">
-              <label htmlFor="b-message">Tell Us About Your Requirement</label>
-              <textarea
-                id="b-message"
-                name="message"
-                rows={3}
-                placeholder="Tell us briefly about your project..."
-              ></textarea>
-            </div>
-            <button type="submit" className="btn-solid" disabled={submitting}>
-              {submitting ? "Sending…" : "Request a Call Back"}
-            </button>
-            {submitError && (
-              <p className="form-note" style={{ color: "#e2231a" }}>
-                Something went wrong. Please try again.
-              </p>
-            )}
+            <BiginForm tracking={tracking} />
             <p className="form-note">No spam. Just a conversation about your story.</p>
-          </form>
+          </div>
         </div>
       </section>
 
@@ -1285,25 +692,6 @@ export default function Home() {
         <span className="dot"></span> Enquire Now
       </a>
 
-      {/* ===== TARGET FOR THE BIGIN POST (visible with ?biginDebug=1) ===== */}
-      <iframe
-        id={BIGIN_IFRAME_NAME}
-        name={BIGIN_IFRAME_NAME}
-        title="Bigin submission target"
-        aria-hidden={!debugBigin}
-        tabIndex={-1}
-        style={
-          debugBigin
-            ? {
-                display: "block",
-                width: "100%",
-                height: 420,
-                border: "2px solid #e2231a",
-                margin: "40px 0",
-              }
-            : { display: "none", width: 0, height: 0, border: 0 }
-        }
-      />
     </>
   );
 }
@@ -1572,6 +960,36 @@ header.scrolled .menu-toggle span{background:var(--ivory);}
   padding-top:22px;
 }
 .reel-tags span{color:var(--gold); margin-right:6px;}
+
+/* ---- Enquiry panel wrapping the Bigin hosted form ---- */
+.form-panel{
+  background:#ffffff;
+  box-shadow:0 30px 70px rgba(20,18,14,0.10);
+  border:1px solid var(--line);
+  padding:34px 28px 24px;
+  position:relative;
+  animation:heroFadeUp 1s cubic-bezier(.19,1,.22,1) .3s both;
+  scroll-margin-top:100px;
+}
+.form-panel::before{
+  content:"";
+  position:absolute; top:0; left:0;
+  width:100%; height:2px;
+  background:linear-gradient(90deg, var(--gold), transparent);
+}
+.form-panel h3{
+  font-size:26px;
+  font-style:italic;
+  margin-bottom:6px;
+}
+.form-panel .sub{
+  color:var(--muted);
+  font-size:13px;
+  margin-bottom:18px;
+}
+/* Zoho injects its own iframe here — let it fill the panel */
+.bigin-form{width:100%; min-height:520px;}
+.bigin-form iframe{width:100% !important; border:0 !important; display:block;}
 
 /* ---- Banner enquiry form ---- */
 .banner-form{
