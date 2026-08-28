@@ -1228,18 +1228,17 @@ html {
 /* Constants copied straight from the original Zoho embed code        */
 /* ------------------------------------------------------------------ */
 
-const FORM_ID = "BiginWebToRecordForm7522188000000623170";
-const FORM_PARENT_ID = "BiginWebToRecordFormParent7522188000000623170";
-const FORM_DIV_ID = "BiginWebToRecordFormDiv7522188000000623170";
-const ELEMENT_DIV_ID = "elementDiv7522188000000623170";
+const FORM_ID = "BiginWebToRecordForm7522188000000639254";
+const FORM_PARENT_ID = "BiginWebToRecordFormParent7522188000000639254";
+const FORM_DIV_ID = "BiginWebToRecordFormDiv7522188000000639254";
+const ELEMENT_DIV_ID = "elementDiv7522188000000639254";
 
 const XNQSJSDP =
-  "98ea7a89a13df0f9f658580a9c875ee0d21ba946b68372ddf0da4593eef8fd0d";
+  "b2b87ea3572e3371fed88307ed13593f513cb9ce83bc3cde54bc6cdbd2be8147";
 const XMIWTLD =
-  "81a6928171067053d2d0cf6ca3a3a766a669f320f445ceae5ed81fcabe8440f54d3dee36d6eeb852887b36e4cbe363b7";
+  "ae94a0b6e91cc613314ca0d4694aae56fe04a9562a39ab07bd2769e2fa200e64cd5f7f18585b383d9c0b6ac6716c34ce";
 const ACTION_TYPE = "UG90ZW50aWFscw==";
 
-const RECAPTCHA_SITE_KEY = "6LdFqIQtAAAAAO8ZlutxG0RSjH__U8T2ycZiHjD5";
 const WF_SCRIPT_SRC = `https://bigin.zoho.com/crm/WebformScriptServlet?rid=${XMIWTLD}gid${XNQSJSDP}&findip=true`;
 
 /**
@@ -1248,24 +1247,33 @@ const WF_SCRIPT_SRC = `https://bigin.zoho.com/crm/WebformScriptServlet?rid=${XMI
  */
 const UTM_STORAGE_KEY = `bigin_utm_${FORM_ID}`;
 
-/** mndFields7522188000000623170 */
+/**
+ * The hosted form served by Bigin. An `action`-less form posts to its own URL,
+ * so this is the endpoint that accepts the submission.
+ */
+const HOSTED_FORM_URL =
+  "https://us.bigin.online/org935134661/forms/2151-get-quote";
+
+/** mndFields7522188000000639254 */
 const MND_FIELDS = [
   "Potential Name",
   "Accounts.Account Name",
   "Contacts.Mobile",
   "Contacts.Email",
   "POTENTIALCF1",
+  "POTENTIALCF3",
   "POTENTIALCF2",
   "Description",
 ] as const;
 
-/** fldLangVal7522188000000623170 */
+/** fldLangVal7522188000000639254 */
 const FLD_LANG_VAL: Record<(typeof MND_FIELDS)[number], string> = {
   "Potential Name": "Name",
-  "Accounts.Account Name": "Company Name",
+  "Accounts.Account Name": "Company",
   "Contacts.Mobile": "Mobile",
   "Contacts.Email": "Email",
   POTENTIALCF1: "Service Interested In?",
+  POTENTIALCF3: "Monthly/Project Budget",
   POTENTIALCF2: "When do you want to start?",
   Description: "Tell Us About Your Requirement",
 };
@@ -1277,6 +1285,7 @@ const FOCUS_ORDER = [
   "Contacts.Mobile",
   "Contacts.Email",
   "POTENTIALCF1",
+  "POTENTIALCF3",
   "POTENTIALCF2",
   "Description",
   "recaptcha",
@@ -1340,14 +1349,22 @@ function FieldError({ message }: { message?: string }) {
 
 export interface BiginWebToRecordFormProps {
   /**
-   * Zoho endpoint the form posts to. The snippet you pasted had no `action`
-   * attribute – copy the exact URL from your Bigin embed code if it differs.
+   * Where the form posts. Defaults to the hosted Bigin form URL for
+   * "2151 Get Quote" — Bigin's own generated form carries no `action`, so the
+   * hosted page posts to itself, and that same URL is what a copy of the form
+   * has to target.
    */
   action?: string;
   /** `returnURL` hidden field. */
   returnURL?: string;
   /** Country used before the Zoho IP-lookup script resolves one. */
   defaultCountryIso?: string;
+  /**
+   * Google reCAPTCHA v2 site key. Omit it (the default) to match this form,
+   * which has no captcha configured in Bigin. Pass a key only after enabling
+   * reCAPTCHA on the form in Bigin, otherwise the token is ignored.
+   */
+  recaptchaSiteKey?: string;
   /**
    * Hide the four auto-filled tracking rows (Lead Page URL, UTM Source,
    * UTM Campaign, UTM Content). They still post their values.
@@ -1363,11 +1380,12 @@ export interface BiginWebToRecordFormProps {
 /* ------------------------------------------------------------------ */
 
 export default function BiginWebToRecordForm({
-  action = "https://bigin.zoho.com/crm/WebToPotentialForm",
+  action = HOSTED_FORM_URL,
   returnURL = "null",
   defaultCountryIso = "in",
+  recaptchaSiteKey,
   hideTrackingFields = true,
-  title = "MS Get Quote",
+  title = "2151 Get Quote",
   className,
 }: BiginWebToRecordFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -1429,6 +1447,7 @@ export default function BiginWebToRecordForm({
   /* ---------------- reCAPTCHA (explicit render) ---------------- */
 
   useEffect(() => {
+    if (!recaptchaSiteKey) return;
     const w = window as any;
     if (w.grecaptcha?.render) {
       setCaptchaReady(true);
@@ -1448,11 +1467,12 @@ export default function BiginWebToRecordForm({
       s.defer = true;
       document.head.appendChild(s);
     }
-  }, []);
+  }, [recaptchaSiteKey]);
 
   useEffect(() => {
     const w = window as any;
     if (
+      !recaptchaSiteKey ||
       !captchaReady ||
       !recaptchaRef.current ||
       recaptchaWidgetId.current !== null ||
@@ -1461,7 +1481,7 @@ export default function BiginWebToRecordForm({
       return;
     }
     recaptchaWidgetId.current = w.grecaptcha.render(recaptchaRef.current, {
-      sitekey: RECAPTCHA_SITE_KEY,
+      sitekey: recaptchaSiteKey,
       theme: "light",
       callback: () => {
         setCaptchaVerified(true);
@@ -1469,7 +1489,7 @@ export default function BiginWebToRecordForm({
       },
       "expired-callback": () => setCaptchaVerified(false),
     });
-  }, [captchaReady, clearError]);
+  }, [captchaReady, clearError, recaptchaSiteKey]);
 
   /* ---------------- Zoho webform script (IP → dial code) ---------------- */
 
@@ -1550,12 +1570,12 @@ export default function BiginWebToRecordForm({
 
     // validatePhone → digits only (rest_alpha)
     const phone = phoneRef.current?.value ?? "";
-    if (phone && !/^[0-9]+$/.test(phone)) {
-      errs["Contacts.Mobile"] = "Enter only numbers";
+    if (phone && !/^[0-9a-zA-Z+.()\-;\s]+$/.test(phone)) {
+      errs["Contacts.Mobile"] = "Enter valid numbers";
     }
 
-    // validateReCaptcha
-    if (!captchaVerified) {
+    // validateReCaptcha (only when a key is configured)
+    if (recaptchaSiteKey && !captchaVerified) {
       errs.recaptcha =
         "Please check the reCAPTCHA box before submitting the form.";
     }
@@ -1640,7 +1660,7 @@ export default function BiginWebToRecordForm({
 
             {/* Company Name */}
             <div className="wf-row">
-              <div className="wf-label">Company Name</div>
+              <div className="wf-label">Company</div>
               <div className={fieldClass("wf-field wf-field-mandatory", "Accounts.Account Name")}>
                 <div className="wf-field-inner">
                   <input
@@ -1736,7 +1756,7 @@ export default function BiginWebToRecordForm({
                         }}
                         maxLength={30}
                         type="text"
-                        inputMode="numeric"
+                        inputMode="tel"
                         className="wf-field-item wf-field-input"
                         onInput={() => clearError("Contacts.Mobile")}
                       />
@@ -1802,7 +1822,9 @@ export default function BiginWebToRecordForm({
             {/* Monthly/Project Budget */}
             <div className="wf-row">
               <div className="wf-label">Monthly/Project Budget</div>
-              <div className={fieldClass("wf-field", "POTENTIALCF3")}>
+              <div
+                className={fieldClass("wf-field wf-field-mandatory", "POTENTIALCF3")}
+              >
                 <div className="wf-field-inner dropdown-contents">
                   <select
                     ref={setRef("POTENTIALCF3")}
@@ -1887,28 +1909,6 @@ export default function BiginWebToRecordForm({
               </div>
             </div>
 
-            {/* UTM Source – auto-filled from ?utm_source (or ad click id / referrer) */}
-            <div className="wf-row" style={trackingRowStyle}>
-              <div className="wf-label">UTM Source</div>
-              <div className={fieldClass("wf-field", "POTENTIALCF5")}>
-                <div className="wf-field-inner">
-                  <input
-                    ref={setRef("POTENTIALCF5")}
-                    name="POTENTIALCF5"
-                    maxLength={255}
-                    type="text"
-                    className="wf-field-item wf-field-input"
-                    value={tracking.utmSource}
-                    onChange={(e) => {
-                      clearError("POTENTIALCF5");
-                      setTracking((t) => ({ ...t, utmSource: e.target.value }));
-                    }}
-                  />
-                </div>
-                <FieldError message={errors["POTENTIALCF5"]} />
-              </div>
-            </div>
-
             {/* UTM Campaign – auto-filled from ?utm_campaign */}
             <div className="wf-row" style={trackingRowStyle}>
               <div className="wf-label">UTM Campaign</div>
@@ -1928,6 +1928,28 @@ export default function BiginWebToRecordForm({
                   />
                 </div>
                 <FieldError message={errors["POTENTIALCF7"]} />
+              </div>
+            </div>
+
+            {/* UTM Source – auto-filled from ?utm_source (or ad click id / referrer) */}
+            <div className="wf-row" style={trackingRowStyle}>
+              <div className="wf-label">UTM Source</div>
+              <div className={fieldClass("wf-field", "POTENTIALCF5")}>
+                <div className="wf-field-inner">
+                  <input
+                    ref={setRef("POTENTIALCF5")}
+                    name="POTENTIALCF5"
+                    maxLength={255}
+                    type="text"
+                    className="wf-field-item wf-field-input"
+                    value={tracking.utmSource}
+                    onChange={(e) => {
+                      clearError("POTENTIALCF5");
+                      setTracking((t) => ({ ...t, utmSource: e.target.value }));
+                    }}
+                  />
+                </div>
+                <FieldError message={errors["POTENTIALCF5"]} />
               </div>
             </div>
 
@@ -1953,23 +1975,25 @@ export default function BiginWebToRecordForm({
               </div>
             </div>
 
-            {/* reCAPTCHA */}
-            <div className="wf-row" data-ux-field-appearance="recaptcha">
-              <div className="wf-label" />
-              <div className={fieldClass("wf-field", "recaptcha")}>
-                <div className="wf-field-inner">
-                  <div
-                    className="g-recaptcha"
-                    id="recap7522188000000623170"
-                    ref={(el) => {
-                      recaptchaRef.current = el;
-                      fieldRefs.current["recaptcha"] = el;
-                    }}
-                  />
+            {/* reCAPTCHA – rendered only when a site key is passed */}
+            {recaptchaSiteKey && (
+              <div className="wf-row" data-ux-field-appearance="recaptcha">
+                <div className="wf-label" />
+                <div className={fieldClass("wf-field", "recaptcha")}>
+                  <div className="wf-field-inner">
+                    <div
+                      className="g-recaptcha"
+                      id="recap7522188000000639254"
+                      ref={(el) => {
+                        recaptchaRef.current = el;
+                        fieldRefs.current["recaptcha"] = el;
+                      }}
+                    />
+                  </div>
+                  <FieldError message={errors["recaptcha"]} />
                 </div>
-                <FieldError message={errors["recaptcha"]} />
               </div>
-            </div>
+            )}
 
             {/* Hidden: Sub-Pipeline */}
             <div className="wf-row" style={{ display: "none" }}>
@@ -1980,9 +2004,11 @@ export default function BiginWebToRecordForm({
                     name="Pipeline"
                     className="wf-field-item wf-field-dropdown"
                     data-wform-field="select"
-                    defaultValue="Sales Pipeline Standard"
+                    defaultValue="Sales Pipeline Standard 2"
                   >
-                    <option value="Sales Pipeline Standard">Sales Pipeline Standard</option>
+                    <option value="Sales Pipeline Standard 2">
+                      Sales Pipeline Standard 2
+                    </option>
                   </select>
                 </div>
               </div>
@@ -2005,12 +2031,6 @@ export default function BiginWebToRecordForm({
                     <option value="Negotiation/Review">Negotiation/Review</option>
                     <option value="Closed Won">Closed Won</option>
                     <option value="Closed Lost">Closed Lost</option>
-                    <option value="Opportunity Identified">Opportunity Identified</option>
-                    <option value="Discussed">Discussed</option>
-                    <option value="Proposal Sent">Proposal Sent</option>
-                    <option value="Follow-up">Follow-up</option>
-                    <option value="Approved">Approved</option>
-                    <option value="Rejected">Rejected</option>
                     <option value="Junk">Junk</option>
                   </select>
                 </div>
@@ -2029,9 +2049,6 @@ export default function BiginWebToRecordForm({
                     defaultValue="Official Website"
                   >
                     <option value="-None-">-None-</option>
-                    <option value="Meta Ads">Meta Ads</option>
-                    <option value="Google Ads">Google Ads</option>
-                    <option value="WhatsApp Campaign">WhatsApp Campaign</option>
                     <option value="Advertisement">Advertisement</option>
                     <option value="Cold Call">Cold Call</option>
                     <option value="Employee Referral">Employee Referral</option>
@@ -2046,6 +2063,9 @@ export default function BiginWebToRecordForm({
                     <option value="Web Download">Web Download</option>
                     <option value="Web Research">Web Research</option>
                     <option value="Chat">Chat</option>
+                    <option value="Google Ads">Google Ads</option>
+                    <option value="WhatsApp Campaign">WhatsApp Campaign</option>
+                    <option value="Meta Ads">Meta Ads</option>
                     <option value="Official Website">Official Website</option>
                     <option value="WhatsApp Organic">WhatsApp Organic</option>
                     <option value="WHATSAPP - Mindstory Digital Partner">
