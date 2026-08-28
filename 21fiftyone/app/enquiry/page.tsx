@@ -1239,8 +1239,6 @@ const XMIWTLD =
   "ae94a0b6e91cc613314ca0d4694aae56fe04a9562a39ab07bd2769e2fa200e64cd5f7f18585b383d9c0b6ac6716c34ce";
 const ACTION_TYPE = "UG90ZW50aWFscw==";
 
-const WF_SCRIPT_SRC = `https://bigin.zoho.com/crm/WebformScriptServlet?rid=${XMIWTLD}gid${XNQSJSDP}&findip=true`;
-
 /**
  * sessionStorage key for the captured UTM values. Derived from the form id so
  * two different Bigin forms on the same site never share a bucket.
@@ -1253,6 +1251,28 @@ const UTM_STORAGE_KEY = `bigin_utm_${FORM_ID}`;
  */
 const HOSTED_FORM_URL =
   "https://us.bigin.online/org935134661/forms/2151-get-quote";
+
+/* ------------------------------------------------------------------ */
+/* Page settings — edit these directly, there are no props             */
+/* ------------------------------------------------------------------ */
+
+/** Heading shown above the fields. */
+const FORM_TITLE = "Get a Quote";
+
+/** Where Zoho sends the visitor after a successful submission. */
+const RETURN_URL = "https://21fiftyone.com/thank-you";
+
+/** Dial code selected before the visitor picks one. */
+const DEFAULT_COUNTRY_ISO = "in";
+
+/** Lead Page URL / UTM rows are filled automatically; keep them out of sight. */
+const HIDE_TRACKING_FIELDS = true;
+
+/**
+ * Google reCAPTCHA v2 site key. Empty means no captcha, matching this form's
+ * setup in Bigin. Turn reCAPTCHA on in Bigin first, then paste the key here.
+ */
+const RECAPTCHA_SITE_KEY: string = "";
 
 /** mndFields7522188000000639254 */
 const MND_FIELDS = [
@@ -1344,53 +1364,14 @@ function FieldError({ message }: { message?: string }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Props                                                              */
-/* ------------------------------------------------------------------ */
-
-export interface BiginWebToRecordFormProps {
-  /**
-   * Where the form posts. Defaults to the hosted Bigin form URL for
-   * "2151 Get Quote" — Bigin's own generated form carries no `action`, so the
-   * hosted page posts to itself, and that same URL is what a copy of the form
-   * has to target.
-   */
-  action?: string;
-  /** `returnURL` hidden field. */
-  returnURL?: string;
-  /** Country used before the Zoho IP-lookup script resolves one. */
-  defaultCountryIso?: string;
-  /**
-   * Google reCAPTCHA v2 site key. Omit it (the default) to match this form,
-   * which has no captcha configured in Bigin. Pass a key only after enabling
-   * reCAPTCHA on the form in Bigin, otherwise the token is ignored.
-   */
-  recaptchaSiteKey?: string;
-  /**
-   * Hide the four auto-filled tracking rows (Lead Page URL, UTM Source,
-   * UTM Campaign, UTM Content). They still post their values.
-   */
-  hideTrackingFields?: boolean;
-  /** Form heading. */
-  title?: string;
-  className?: string;
-}
-
-/* ------------------------------------------------------------------ */
 /* Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function BiginWebToRecordForm({
-  action = HOSTED_FORM_URL,
-  returnURL = "null",
-  defaultCountryIso = "in",
-  recaptchaSiteKey,
-  hideTrackingFields = true,
-  title = "2151 Get Quote",
-  className,
-}: BiginWebToRecordFormProps) {
+export default function EnquiryPage() {
   const formRef = useRef<HTMLFormElement>(null);
   const phoneRef = useRef<HTMLInputElement | null>(null);
   const dialCodeRef = useRef<HTMLInputElement>(null);
+  const zcGadRef = useRef<HTMLInputElement>(null);
   const recaptchaRef = useRef<HTMLDivElement | null>(null);
   const recaptchaWidgetId = useRef<number | null>(null);
   const countryBoxRef = useRef<HTMLDivElement>(null);
@@ -1400,12 +1381,12 @@ export default function BiginWebToRecordForm({
   const [submitting, setSubmitting] = useState(false);
   const [captchaVerified, setCaptchaVerified] = useState(false);
   const [captchaReady, setCaptchaReady] = useState(false);
-  const [countryIso, setCountryIso] = useState(defaultCountryIso);
+  const [countryIso, setCountryIso] = useState(DEFAULT_COUNTRY_ISO);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [tracking, setTracking] = useState<TrackingValues>(EMPTY_TRACKING);
 
-  const trackingRowStyle = hideTrackingFields
+  const trackingRowStyle = HIDE_TRACKING_FIELDS
     ? ({ display: "none" } as const)
     : undefined;
 
@@ -1442,12 +1423,15 @@ export default function BiginWebToRecordForm({
 
   useEffect(() => {
     setTracking(collectTracking(UTM_STORAGE_KEY));
+    // Google Ads click id — Zoho reads it from this hidden field.
+    const gclid = new URLSearchParams(window.location.search).get("gclid");
+    if (gclid && zcGadRef.current) zcGadRef.current.value = gclid;
   }, []);
 
   /* ---------------- reCAPTCHA (explicit render) ---------------- */
 
   useEffect(() => {
-    if (!recaptchaSiteKey) return;
+    if (!RECAPTCHA_SITE_KEY) return;
     const w = window as any;
     if (w.grecaptcha?.render) {
       setCaptchaReady(true);
@@ -1467,12 +1451,12 @@ export default function BiginWebToRecordForm({
       s.defer = true;
       document.head.appendChild(s);
     }
-  }, [recaptchaSiteKey]);
+  }, []);
 
   useEffect(() => {
     const w = window as any;
     if (
-      !recaptchaSiteKey ||
+      !RECAPTCHA_SITE_KEY ||
       !captchaReady ||
       !recaptchaRef.current ||
       recaptchaWidgetId.current !== null ||
@@ -1481,7 +1465,7 @@ export default function BiginWebToRecordForm({
       return;
     }
     recaptchaWidgetId.current = w.grecaptcha.render(recaptchaRef.current, {
-      sitekey: recaptchaSiteKey,
+      sitekey: RECAPTCHA_SITE_KEY,
       theme: "light",
       callback: () => {
         setCaptchaVerified(true);
@@ -1489,26 +1473,17 @@ export default function BiginWebToRecordForm({
       },
       "expired-callback": () => setCaptchaVerified(false),
     });
-  }, [captchaReady, clearError, recaptchaSiteKey]);
+  }, [captchaReady, clearError]);
 
-  /* ---------------- Zoho webform script (IP → dial code) ---------------- */
-
-  useEffect(() => {
-    const applyIpCountry = () => {
-      const local = (window as any).localCode as string | undefined;
-      if (local && countries.some((c) => c.iso === local)) setCountryIso(local);
-    };
-    const existing = document.getElementById("wf_script");
-    if (existing) {
-      applyIpCountry();
-      return;
-    }
-    const s = document.createElement("script");
-    s.id = "wf_script";
-    s.src = WF_SCRIPT_SRC;
-    s.onload = applyIpCountry;
-    document.body.appendChild(s);
-  }, []);
+  /* ----------------------------------------------------------------
+   * Zoho's WebformScriptServlet is deliberately NOT loaded.
+   *
+   * It calls document.write(), which browsers refuse once the page has
+   * finished parsing ("Failed to execute 'write' on 'Document'"), so injecting
+   * it from an effect only produces a console error. All it contributed was
+   * IP-based dial-code detection and the zc_gad value, both handled here:
+   * defaultCountryIso covers the first, the gclid capture below the second.
+   * ---------------------------------------------------------------- */
 
   /* ---------------- Close the country dropdown on outside click ---------------- */
 
@@ -1575,7 +1550,7 @@ export default function BiginWebToRecordForm({
     }
 
     // validateReCaptcha (only when a key is configured)
-    if (recaptchaSiteKey && !captchaVerified) {
+    if (RECAPTCHA_SITE_KEY && !captchaVerified) {
       errs.recaptcha =
         "Please check the reCAPTCHA box before submitting the form.";
     }
@@ -1584,8 +1559,9 @@ export default function BiginWebToRecordForm({
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    (document as any).charset = "UTF-8";
-
+    // NB: the original inline handler ran `document.charset = "UTF-8"`, which
+    // throws in modern browsers ("only has a getter"). The encoding already
+    // comes from acceptCharset on the form, so there is nothing to do here.
     const errs = validate();
     setErrors(errs);
 
@@ -1611,7 +1587,7 @@ export default function BiginWebToRecordForm({
 
   return (
     <div
-      className={`wf-parent${className ? ` ${className}` : ""}`}
+      className="wf-parent"
       id={FORM_PARENT_ID}
       style={{ backgroundColor: "#EAEEF2" }}
     >
@@ -1625,19 +1601,19 @@ export default function BiginWebToRecordForm({
           data-ux-form-alignment="top"
           style={{ fontFamily: "Arial", position: "relative", fontSize: "15px" }}
           method="POST"
-          action={action}
+          action={HOSTED_FORM_URL}
           encType="multipart/form-data"
           acceptCharset="UTF-8"
           onSubmit={handleSubmit}
         >
           {/* Do not remove this code. */}
           <input type="text" style={{ display: "none" }} name="xnQsjsdp" defaultValue={XNQSJSDP} readOnly />
-          <input type="hidden" name="zc_gad" id="zc_gad" defaultValue="" />
+          <input ref={zcGadRef} type="hidden" name="zc_gad" id="zc_gad" defaultValue="" />
           <input type="text" style={{ display: "none" }} name="xmIwtLD" defaultValue={XMIWTLD} readOnly />
           <input type="text" style={{ display: "none" }} name="actionType" defaultValue={ACTION_TYPE} readOnly />
-          <input type="text" style={{ display: "none" }} name="returnURL" defaultValue={returnURL} readOnly />
+          <input type="text" style={{ display: "none" }} name="returnURL" defaultValue={RETURN_URL} readOnly />
 
-          <div className="wf-header">{title}</div>
+          <div className="wf-header">{FORM_TITLE}</div>
 
           <div id={ELEMENT_DIV_ID} className="wf-form-wrapper">
             {/* Name */}
@@ -1976,7 +1952,7 @@ export default function BiginWebToRecordForm({
             </div>
 
             {/* reCAPTCHA – rendered only when a site key is passed */}
-            {recaptchaSiteKey && (
+            {RECAPTCHA_SITE_KEY && (
               <div className="wf-row" data-ux-field-appearance="recaptcha">
                 <div className="wf-label" />
                 <div className={fieldClass("wf-field", "recaptcha")}>
