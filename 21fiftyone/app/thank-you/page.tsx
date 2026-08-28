@@ -20,20 +20,43 @@ const NEXT_STEPS = [
 
 function ThankYouInner() {
   const params = useSearchParams();
-  const name = (params.get("name") || "").trim();
-  const service = (params.get("service") || "").trim();
-  const from = params.get("from") === "popup" ? "Enquiry form" : "Hero form";
 
+  /* Read the query string ONCE, on first render, and hold it in state.
+     The effect below wipes the query off the address bar straight after,
+     so anything read lazily later would come back empty — freezing it
+     here keeps the greeting, the WhatsApp message and the analytics
+     event working from a clean URL. */
+  const [lead] = useState(() => ({
+    name: (params.get("name") || "").trim(),
+    service: (params.get("service") || "").trim(),
+    from: params.get("from") === "popup" ? "Enquiry form" : "Hero form",
+  }));
+
+  const { name, service, from } = lead;
   const firstName = name.split(/\s+/)[0];
-  const [stamp, setStamp] = useState("");
 
+  /* ---------------------------------------------------------
+     Clean the URL.
+
+     Zoho's returnURL has to carry ?name=&service=&from= — that is
+     the only channel it gives us for passing the submission through
+     to this page. Once we've read those values we don't want them
+     sitting in the address bar: they're noise if the visitor copies
+     the link, and a name in a URL is the kind of thing that ends up
+     in referrer headers and analytics reports.
+
+     replaceState rewrites the bar without a navigation or a reload,
+     so React state is untouched and there's no extra history entry
+     for the back button to land on.
+     --------------------------------------------------------- */
   useEffect(() => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    setStamp(
-      `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`
-    );
+    if (window.location.search) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
+  /* Conversion tracking — fires with the values captured above */
+  useEffect(() => {
     const w = window as unknown as {
       gtag?: (...args: unknown[]) => void;
       fbq?: (...args: unknown[]) => void;
@@ -58,7 +81,6 @@ function ThankYouInner() {
           <div className="slate-bar" aria-hidden="true">
             <span /><span /><span /><span /><span /><span /><span /><span />
           </div>
-
           <div className="slate-body">
             <span className="eyebrow">Take 01 · Enquiry received</span>
             <h1>
@@ -72,24 +94,8 @@ function ThankYouInner() {
               Your story is on our desk. A producer from the studio will reach out within
               24 hours to talk it through.
             </p>
-
-            <dl className="slate-meta">
-              <div>
-                <dt>Project</dt>
-                <dd>{service || "To be discussed"}</dd>
-              </div>
-              <div>
-                <dt>Received via</dt>
-                <dd>{from}</dd>
-              </div>
-              <div>
-                <dt>Logged</dt>
-                <dd>{stamp || "—"}</dd>
-              </div>
-            </dl>
-
             <div className="ty-actions">
-              
+
                <a className="btn-solid"
                 href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
                   `Hi 21Fiftyone, I just sent an enquiry${service ? ` about ${service}` : ""}${
@@ -145,13 +151,17 @@ function ThankYouInner() {
    Zoho's own `returnURL` redirect lands here — but it lands
    *inside that iframe*, because Zoho's server-side redirect
    naturally targets whatever frame submitted the POST.
-
    Rather than trying to control that from the form side (fragile —
    depends on Zoho's own remote validation script, which we don't
    control), we detect it from here: if this page ever renders
    inside a frame that isn't the top-level window, immediately
    send the *whole tab* to this same URL. Since the iframe is
    same-origin, `window.top` is reachable and this is instant.
+
+   Note this deliberately forwards the FULL href, query string and
+   all — the top-level page needs those values to greet the visitor.
+   They're stripped from the address bar afterwards, by the effect
+   in ThankYouInner.
    ========================================================= */
 function useBustOutOfIframe() {
   const [busting, setBusting] = useState(false);
@@ -191,7 +201,6 @@ export default function ThankYouPage() {
 /* ============================ CSS ============================ */
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500;1,600&family=Jost:wght@300;400;500;600;700&display=swap');
-
 :root{
   --bg:#ffffff; --bg-alt:#f6f6f6; --line:rgba(0,0,0,0.10);
   --ivory:#121212; --muted:#6e6e6e;
@@ -209,12 +218,9 @@ h1,h2,h4{font-family:'Cormorant Garamond',serif;font-weight:500}
 .btn-solid{background:var(--gold);color:#fff;padding:14px 30px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;font-weight:500;border:1px solid var(--gold);transition:all .3s ease;display:inline-block}
 .btn-solid:hover{background:transparent;color:var(--gold);transform:translateY(-2px)}
 a:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
-
 .ty-header{display:flex;align-items:center;justify-content:space-between;padding:22px 40px;border-bottom:1px solid var(--line)}
 .logo img{height:38px;width:auto}
-
 .ty{max-width:1240px;margin:0 auto;padding:0 32px}
-
 .slate{margin:80px 0 0;border:1px solid var(--line);background:#fff;box-shadow:0 30px 70px rgba(20,18,14,.08);animation:fadeUp .9s cubic-bezier(.19,1,.22,1) both}
 .slate-bar{display:grid;grid-template-columns:repeat(8,1fr);height:14px;overflow:hidden;transform-origin:left center;animation:clap .55s cubic-bezier(.34,1.56,.64,1) .25s both}
 .slate-bar span:nth-child(odd){background:var(--ivory)}
@@ -223,11 +229,7 @@ a:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
 .slate h1{font-size:clamp(44px,6vw,84px);line-height:.98;font-style:italic;margin:22px 0 20px}
 .slate h1 span{color:var(--gold);font-style:normal}
 .lede{max-width:520px;color:var(--muted);font-size:16px;margin-bottom:40px}
-.slate-meta{display:grid;grid-template-columns:repeat(3,auto);gap:40px;justify-content:start;padding:24px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:36px}
-.slate-meta dt{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.slate-meta dd{font-family:'Cormorant Garamond',serif;font-size:22px;font-style:italic}
 .ty-actions{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
-
 .next{padding:110px 0 90px}
 .section-head h2{font-size:clamp(32px,4vw,50px);font-style:italic;margin-top:14px}
 .next-list{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-top:48px}
@@ -236,21 +238,17 @@ a:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
 .next-list .tc{font-size:12px;color:var(--gold);letter-spacing:.1em;display:block;margin-bottom:26px}
 .next-list h4{font-size:24px;font-style:italic;margin-bottom:12px}
 .next-list p{color:var(--muted);font-size:14px}
-
 .ty-footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:26px 0 40px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
 .ty-footer a{color:var(--gold)}
 .socials{display:flex;gap:18px}
 .socials a{color:var(--muted);transition:color .25s ease}
 .socials a:hover{color:var(--gold)}
-
 @keyframes fadeUp{from{opacity:0;transform:translateY(36px)}to{opacity:1;transform:none}}
 @keyframes clap{from{transform:scaleX(0)}to{transform:scaleX(1)}}
-
 @media(max-width:960px){.next-list{grid-template-columns:1fr}}
 @media(max-width:720px){
   .ty-header{padding:18px 20px}.logo img{height:30px}
   .ty{padding:0 20px}.slate{margin-top:40px}.slate-body{padding:40px 24px 36px}
-  .slate-meta{grid-template-columns:1fr;gap:18px}
   .ty-actions{flex-direction:column;align-items:stretch}.ty-actions a{text-align:center}
   .next{padding:70px 0 60px}
   .ty-footer{flex-direction:column;align-items:flex-start}
