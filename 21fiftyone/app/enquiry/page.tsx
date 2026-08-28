@@ -1259,8 +1259,15 @@ const HOSTED_FORM_URL =
 /** Heading shown above the fields. */
 const FORM_TITLE = "Get a Quote";
 
-/** Where Zoho sends the visitor after a successful submission. */
-const RETURN_URL = "https://21fiftyone.com/thank-you";
+/**
+ * Where Zoho sends the visitor after submitting.
+ *
+ * "null" is what Bigin's own form sends, and it means "use whatever the form
+ * is configured to do in Bigin". A custom URL here only works if that exact
+ * URL is set as the redirect inside Bigin (form → Settings → after
+ * submission); an unapproved URL gets ignored and Zoho redirects elsewhere.
+ */
+const RETURN_URL = "null";
 
 /** Dial code selected before the visitor picks one. */
 const DEFAULT_COUNTRY_ISO = "in";
