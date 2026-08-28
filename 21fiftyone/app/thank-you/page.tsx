@@ -6,31 +6,16 @@ import { useSearchParams } from "next/navigation";
 /* =========================================================
    21FIFTYONE — THANK YOU PAGE
    Route: /thank-you
-   Query params (all optional, set by the enquiry forms):
-     ?name=Arjun            -> personalises the headline
-     ?service=Corporate%20Films
-     ?from=banner|popup     -> shown in the "slate" detail strip
+   ...
    ========================================================= */
 
-const WHATSAPP_NUMBER = "919999999999"; // <- replace with the studio number (country code, no +)
+const WHATSAPP_NUMBER = "919999999999";
 const STUDIO_EMAIL = "hello@21fiftyone.com";
 
 const NEXT_STEPS = [
-  {
-    tc: "00:01",
-    title: "We read your brief",
-    desc: "Your enquiry lands directly with our producers, not a generic inbox.",
-  },
-  {
-    tc: "00:02",
-    title: "We call you back",
-    desc: "Expect a call or WhatsApp from the studio within 24 working hours.",
-  },
-  {
-    tc: "00:03",
-    title: "We scope the story",
-    desc: "A short conversation about goals, references and budget — then a proposal.",
-  },
+  { tc: "00:01", title: "We read your brief", desc: "Your enquiry lands directly with our producers, not a generic inbox." },
+  { tc: "00:02", title: "We call you back", desc: "Expect a call or WhatsApp from the studio within 24 working hours." },
+  { tc: "00:03", title: "We scope the story", desc: "A short conversation about goals, references and budget — then a proposal." },
 ];
 
 function ThankYouInner() {
@@ -43,15 +28,12 @@ function ThankYouInner() {
   const [stamp, setStamp] = useState("");
 
   useEffect(() => {
-    /* reference stamp — date + time the slate was "clapped" */
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     setStamp(
       `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`
     );
 
-    /* Conversion tracking — fires once per landing on this page.
-       Works with GA4 / Google Ads gtag, Meta Pixel if present. */
     const w = window as unknown as {
       gtag?: (...args: unknown[]) => void;
       fbq?: (...args: unknown[]) => void;
@@ -72,7 +54,6 @@ function ThankYouInner() {
       </header>
 
       <main className="ty">
-        {/* ---- the slate ---- */}
         <section className="slate">
           <div className="slate-bar" aria-hidden="true">
             <span /><span /><span /><span /><span /><span /><span /><span />
@@ -82,13 +63,9 @@ function ThankYouInner() {
             <span className="eyebrow">Take 01 · Enquiry received</span>
             <h1>
               {firstName ? (
-                <>
-                  Thank you, <span>{firstName}.</span>
-                </>
+                <>Thank you, <span>{firstName}.</span></>
               ) : (
-                <>
-                  Thank <span>you.</span>
-                </>
+                <>Thank <span>you.</span></>
               )}
             </h1>
             <p className="lede">
@@ -112,8 +89,8 @@ function ThankYouInner() {
             </dl>
 
             <div className="ty-actions">
-              <a
-                className="btn-solid"
+              
+               <a className="btn-solid"
                 href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
                   `Hi 21Fiftyone, I just sent an enquiry${service ? ` about ${service}` : ""}${
                     firstName ? ` (${name})` : ""
@@ -129,7 +106,6 @@ function ThankYouInner() {
           </div>
         </section>
 
-        {/* ---- what happens next ---- */}
         <section className="next">
           <div className="section-head">
             <span className="eyebrow">What happens next</span>
@@ -162,8 +138,49 @@ function ThankYouInner() {
   );
 }
 
+/* =========================================================
+   FRAME-BUSTING GUARD
+   ---------------------------------------------------------
+   The enquiry form lives in an iframe (public/forms/get-quote.html).
+   Zoho's own `returnURL` redirect lands here — but it lands
+   *inside that iframe*, because Zoho's server-side redirect
+   naturally targets whatever frame submitted the POST.
+
+   Rather than trying to control that from the form side (fragile —
+   depends on Zoho's own remote validation script, which we don't
+   control), we detect it from here: if this page ever renders
+   inside a frame that isn't the top-level window, immediately
+   send the *whole tab* to this same URL. Since the iframe is
+   same-origin, `window.top` is reachable and this is instant.
+   ========================================================= */
+function useBustOutOfIframe() {
+  const [busting, setBusting] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (window.top && window.top !== window.self) {
+        setBusting(true);
+        window.top.location.href = window.location.href;
+      }
+    } catch {
+      /* cross-origin top window (shouldn't happen here, same-origin
+         iframe) — nothing we can do, just render normally */
+    }
+  }, []);
+
+  return busting;
+}
+
 /* useSearchParams must be wrapped in Suspense in the App Router */
 export default function ThankYouPage() {
+  const busting = useBustOutOfIframe();
+
+  if (busting) {
+    /* avoid painting the full (squished) thank-you page inside the
+       iframe for the instant before the top-level redirect fires */
+    return null;
+  }
+
   return (
     <Suspense fallback={null}>
       <ThankYouInner />
@@ -198,7 +215,6 @@ a:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
 
 .ty{max-width:1240px;margin:0 auto;padding:0 32px}
 
-/* ---- slate ---- */
 .slate{margin:80px 0 0;border:1px solid var(--line);background:#fff;box-shadow:0 30px 70px rgba(20,18,14,.08);animation:fadeUp .9s cubic-bezier(.19,1,.22,1) both}
 .slate-bar{display:grid;grid-template-columns:repeat(8,1fr);height:14px;overflow:hidden;transform-origin:left center;animation:clap .55s cubic-bezier(.34,1.56,.64,1) .25s both}
 .slate-bar span:nth-child(odd){background:var(--ivory)}
@@ -212,7 +228,6 @@ a:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
 .slate-meta dd{font-family:'Cormorant Garamond',serif;font-size:22px;font-style:italic}
 .ty-actions{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
 
-/* ---- next steps ---- */
 .next{padding:110px 0 90px}
 .section-head h2{font-size:clamp(32px,4vw,50px);font-style:italic;margin-top:14px}
 .next-list{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-top:48px}
