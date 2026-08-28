@@ -7,30 +7,36 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * ---------------------------------------------------------------
  * Embeds the Bigin "Get Quote" web-to-record form (public/forms/get-quote.html)
  * in a same-origin iframe and silently prefills four fields that are
- * visible on the form but shouldn't require the visitor to type anything:
+ * present on the form but shouldn't require the visitor to type anything:
  *
  *   Lead Page URL  -> POTENTIALCF4  (the page the visitor filled the form from)
  *   UTM Source     -> POTENTIALCF5  (?utm_source=...)
  *   UTM Campaign   -> POTENTIALCF7  (?utm_campaign=...)
  *   UTM Content    -> POTENTIALCF6  (?utm_content=...)
  *
- * The form's own script (see the <script> block at the bottom of
- * get-quote.html) already listens for a `window.postMessage` of the
- * shape { type: 'bigin-prefill', payload: {...} } and writes the
- * values straight into those inputs — this component is just the
- * sender half of that handshake.
+ * The form's own script listens for a `window.postMessage` of the shape
+ * { type: 'bigin-prefill', payload: {...} } and writes the values straight
+ * into those inputs — this component is the sender half of that handshake.
  *
  * Because Zoho's servlet-loaded script (`wf_script`) attaches its own
- * behaviour asynchronously, we don't rely on a single message: the
- * iframe pings us back with `bigin-ready` the moment its DOM is parsed,
- * and we also retry a couple of times after `onLoad` fires, in case the
- * very first message races the iframe's own listener setup.
+ * behaviour asynchronously, we don't rely on a single message: the iframe
+ * pings us back with `bigin-ready` the moment its DOM is parsed, and we also
+ * retry a couple of times after `onLoad` fires, in case the very first
+ * message races the iframe's own listener setup.
+ *
+ * HEIGHT
+ * The iframe also posts { type: 'bigin-height', height } whenever its content
+ * height changes (load, validation errors appearing, the textarea being
+ * dragged, viewport resize). We size the frame to that value, which removes
+ * the dead space that a fixed height leaves under the Submit button.
+ * `minHeight` is now only the placeholder height used before the first
+ * measurement arrives.
  * ------------------------------------------------------------------- */
 
 export interface GetQuoteFormProps {
   /** Path to the hosted form file. Defaults to the file placed under /public/forms. */
   src?: string;
-  /** Minimum iframe height in pixels. */
+  /** Placeholder height in pixels, used only until the iframe reports its real height. */
   minHeight?: number;
   /** Optional className applied to the wrapping <div>. */
   className?: string;
@@ -55,7 +61,7 @@ const RETRY_DELAYS_MS = [300, 1000, 2000]; // covers slow wf_script + reCAPTCHA 
 
 export default function GetQuoteForm({
   src = DEFAULT_SRC,
-  minHeight = 900,
+  minHeight = 620,
   className,
   overrides,
 }: GetQuoteFormProps) {
@@ -63,6 +69,7 @@ export default function GetQuoteForm({
   const ackedRef = useRef(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
 
   const buildPayload = useCallback((): PrefillPayload => {
     let utmSource = '';
@@ -128,6 +135,16 @@ export default function GetQuoteForm({
         ackedRef.current = true;
         clearTimers();
       }
+
+      // The iframe reports its content height — size the frame to it.
+      if (event.data.type === 'bigin-height') {
+        const next = Number(event.data.height);
+        if (Number.isFinite(next) && next > 0) {
+          setContentHeight((prev) =>
+            prev !== null && Math.abs(prev - next) < 2 ? prev : next,
+          );
+        }
+      }
     }
 
     window.addEventListener('message', onMessage);
@@ -154,11 +171,17 @@ export default function GetQuoteForm({
         src={src}
         onLoad={handleLoad}
         title="Get a Quote"
+        scrolling="no"
         style={{
           width: '100%',
-          minHeight,
+          // Once the iframe has measured itself, that height wins outright;
+          // minHeight is only the placeholder for the first paint.
+          height: contentHeight ?? minHeight,
+          minHeight: contentHeight ? 0 : minHeight,
           border: 'none',
           display: 'block',
+          overflow: 'hidden',
+          transition: 'height 0.2s ease',
         }}
       />
     </div>

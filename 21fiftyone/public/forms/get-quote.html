@@ -864,56 +864,310 @@ width: 100%;
      nothing here touches the JS, ids, or field names Zoho depends on.
      ========================================================= -->
 <style>
-  html, body { background: transparent !important; }
-  .wf-parent {
-    background: transparent !important;
-    padding: 0 !important;
+@import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap');
+
+:root {
+  --ff-brand: 'Jost', 'Helvetica Neue', Arial, sans-serif;
+  --c-ink: #14161a;
+  --c-muted: #5a6068;
+  --c-faint: #9aa0a6;
+  --c-line: rgba(20, 22, 26, 0.14);
+  --c-line-hover: rgba(20, 22, 26, 0.32);
+  --c-brand: #e2231a;
+  --c-brand-dark: #b81a13;
+  --c-tint: #fdf0ef;
+  --c-error: #d92d20;
+}
+
+/* ---- 1. SHELL: transparent, no card, no second scrollbar ---- */
+html, body {
+  background: transparent !important;
+  height: auto !important;
+}
+.wf-parent {
+  background: transparent !important;
+  padding: 0 !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+.wf-wrapper {
+  max-width: none !important;
+  width: 100% !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: var(--c-ink) !important;
+}
+.wf-form-component {
+  padding: 0 !important;
+  font-size: 15px !important;
+}
+.wf-form-component,
+.wf-form-component * {
+  font-family: var(--ff-brand) !important;
+}
+.wf-header { display: none !important; } /* the site already shows "Start Your Story" above the form */
+
+/* If Zoho's badge shows on your plan, let it sit below the button
+   instead of floating over it. */
+.wform-poweredby-container {
+  position: static !important;
+  display: inline-flex !important;
+  margin-top: 18px;
+  border-radius: 4px;
+}
+
+/* ---- 2. LAYOUT: two columns on desktop ----
+   Name | Company
+   Mobile | Email
+   Service interested in            (full width, row 5)
+   Budget | Start date
+   Tell us about your requirement   (full width, row 8)
+   The hidden UTM / pipeline rows are display:none, so they never
+   take up a grid cell. */
+.wf-form-wrapper {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 32px;
+  row-gap: 4px;
+  align-items: start;
+}
+.wf-form-wrapper > .wf-row:nth-child(5),
+.wf-form-wrapper > .wf-row:nth-child(8) {
+  grid-column: 1 / -1;
+}
+.wf-row {
+  margin-bottom: 24px !important;
+  min-width: 0;
+}
+.wform-btn-wrap {
+  grid-column: 1 / -1;
+  margin-top: 12px !important;
+}
+
+/* ---- 3. LABELS ---- */
+.wf-label {
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-muted) !important;
+  padding: 0 0 8px !important;
+}
+.wf-row:has(.wf-field-mandatory) .wf-label::after {
+  content: '*';
+  color: var(--c-brand);
+  margin-left: 0.4em;
+  font-size: 13px;
+  line-height: 0;
+}
+.wf-field-mandatory .wf-field-inner::before { display: none !important; }
+
+/* ---- 4. FIELDS: hairline underlines, nothing boxed.
+   On focus a red rule draws in from the left across the field. ---- */
+.wf-field-input,
+select.wf-field-dropdown,
+.wform-field-item-upload-input {
+  border: 0 !important;
+  border-bottom: 1px solid var(--c-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 10px 2px !important;
+  min-height: 42px;
+  font-size: 15px !important;
+  color: var(--c-ink) !important;
+  transition: border-color 0.2s ease;
+}
+.wf-field-input::placeholder { color: var(--c-faint); }
+.wf-field-input:hover,
+select.wf-field-dropdown:hover { border-bottom-color: var(--c-line-hover) !important; }
+.wf-field-input:focus,
+select.wf-field-dropdown:focus {
+  border-bottom-color: var(--c-brand) !important;
+  box-shadow: none !important;
+  outline: none;
+}
+
+/* Also resets Zoho's `.dropdown-contents::after` triangle, which lands
+   on this same pseudo-element for the select rows. */
+.wf-field-inner::after {
+  content: '';
+  position: absolute;
+  top: auto !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.5px;
+  border: 0 !important;
+  background: var(--c-brand);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.3, 1);
+  pointer-events: none;
+  z-index: 2;
+}
+.wf-field-inner:focus-within::after { transform: scaleX(1); }
+
+/* ---- 5. SELECTS ---- */
+select.wf-field-dropdown {
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235a6068' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 2px center !important;
+  padding-right: 28px !important;
+  cursor: pointer;
+}
+select.wf-field-dropdown:has(option[value='-None-']:checked) { color: var(--c-faint) !important; }
+.wf-form-component option { color: var(--c-ink); }
+
+/* ---- 6. PHONE: country code box + number share one underline ---- */
+.multiple-fields-div.flex-1-5 .field-1 { flex: 0 0 78px !important; }
+.multiselect.wf-field-dropdown {
+  border: 0 !important;
+  border-bottom: 1px solid var(--c-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  min-height: 42px;
+}
+.multiselect.dropbox-active {
+  border-radius: 0 !important;
+  border-bottom-color: var(--c-brand) !important;
+}
+.ux-pick-mixed .wf-field-dropdown.dropbox-active::after { display: none !important; }
+.ux-pick-mixed .dropdown-contents {
+  padding: 0 18px 0 0 !important;
+  height: 42px !important;
+}
+.ux-pick-mixed .dropdown-contents::after {
+  inset-inline-end: 6px !important;
+  border-top-color: var(--c-muted) !important;
+}
+.content-display-area {
+  font-size: 15px !important;
+  color: var(--c-ink);
+  margin-inline-end: 0 !important;
+}
+.multiple-fields-div .wf-field-item:not(.selected-options) { border-radius: 0 !important; }
+.multiple-fields-div .field-2 .wf-field-input { padding-left: 10px !important; }
+
+/* The hidden inline search input inherits .wf-field-input — undo it. */
+.dropdown-input {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 6px 8px !important;
+  min-height: 0 !important;
+}
+
+/* ---- 7. COUNTRY MENU.
+   No `top` is set here on purpose: the form's own JS writes an inline
+   top when it flips the menu upward, and !important would break it. ---- */
+.dropdown-menu {
+  border: 1px solid rgba(20, 22, 26, 0.1) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 18px 40px rgba(20, 22, 26, 0.14) !important;
+  background: #fff !important;
+  padding: 6px !important;
+}
+.dropdown-menu.dropdown-focus { border-color: rgba(20, 22, 26, 0.1) !important; }
+.dropdown-menu .option {
+  border-bottom: 0 !important;
+  border-radius: 6px;
+  padding: 8px 10px !important;
+  font-size: 14px;
+}
+.dropdown-menu .option:hover { background: var(--c-tint) !important; }
+.dropdown-menu .option[data-selected='true'] {
+  background: var(--c-tint) !important;
+  color: var(--c-brand);
+  font-weight: 500 !important;
+}
+.dropdown-menu .no-results { color: var(--c-faint); }
+.dropdown-search-input {
+  width: calc(100% - 12px) !important;
+  margin: 6px !important;
+  border: 1px solid rgba(20, 22, 26, 0.12) !important;
+  border-radius: 8px !important;
+  padding: 8px 10px !important;
+  font-size: 14px;
+}
+.dropdown-search-input:hover,
+.dropdown-search-input:focus { border: 1px solid var(--c-brand) !important; }
+
+/* ---- 8. TEXTAREA ---- */
+.wf-text-area-input {
+  height: 120px !important;
+  min-height: 120px !important;
+  max-height: 280px !important;
+  padding-top: 12px !important;
+  line-height: 1.55;
+}
+
+/* ---- 9. ERRORS ---- */
+.wf-form-component .wf-field-error {
+  text-align: left !important;
+  color: var(--c-error) !important;
+  font-size: 11.5px !important;
+  margin-top: 6px !important;
+}
+.wf-error-parent-ele { justify-content: flex-start !important; }
+.wf-error-view-more { color: var(--c-brand) !important; }
+.wf-field-error-active.wf-field .wf-field-input,
+.wf-field-error-active.wf-field .wf-field-dropdown {
+  border: 0 !important;
+  border-bottom: 1px solid var(--c-error) !important;
+  box-shadow: none !important;
+}
+.wf-field-help-text {
+  color: var(--c-muted) !important;
+  font-size: 11.5px !important;
+}
+
+/* ---- 10. SUBMIT ---- */
+#formsubmit {
+  width: 100% !important;
+  padding: 16px 24px !important;
+  background-color: var(--c-brand) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: #fff !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+#formsubmit:hover { background-color: var(--c-brand-dark) !important; }
+#formsubmit:active { transform: translateY(1px); }
+#formsubmit:disabled { /* Zoho disables the button once validation passes */
+  opacity: 0.55 !important;
+  cursor: not-allowed;
+  transform: none;
+}
+#formsubmit:focus-visible {
+  outline: 2px solid var(--c-ink);
+  outline-offset: 3px;
+}
+
+/* ---- 11. RESPONSIVE + MOTION ---- */
+@media screen and (max-width: 760px) {
+  .wf-form-wrapper {
+    grid-template-columns: 1fr;
+    column-gap: 0;
   }
-  .wf-wrapper {
-    max-width: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    background: transparent !important;
-  }
-  .wf-form-component,
-  .wf-form-component * {
-    font-family: 'Jost', Arial, sans-serif !important;
-  }
-  .wf-header { display: none; } /* the site already shows "Start Your Story" above the form */
-  .wf-label {
-    font-size: 10px !important;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #6e6e6e !important;
-    font-weight: 400 !important;
-  }
+  .wf-form-wrapper > .wf-row:nth-child(5),
+  .wf-form-wrapper > .wf-row:nth-child(8) { grid-column: 1; }
+  .wf-row { margin-bottom: 20px !important; }
+  #formsubmit { letter-spacing: 0.18em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wf-field-inner::after,
   .wf-field-input,
-  .wf-field-dropdown,
-  .wform-field-item-upload-input,
-  .dropdown-input {
-    border: none !important;
-    border-bottom: 1px solid rgba(0,0,0,0.10) !important;
-    border-radius: 0 !important;
-    padding: 9px 2px !important;
-    background: transparent !important;
-  }
-  .wf-field-input:focus,
-  .wf-field-dropdown:focus,
-  .multiselect.dropbox-active,
-  .dropdown-menu.dropdown-focus {
-    border-color: #e2231a !important;
-    box-shadow: none !important;
-  }
-  #formsubmit {
-    background-color: #e2231a !important;
-    border-color: #e2231a !important;
-    width: 100% !important;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    font-size: 11px !important;
-    border-radius: 0 !important;
-  }
-  .wform-btn-wrap { margin-top: 20px !important; }
+  select.wf-field-dropdown,
+  #formsubmit { transition: none !important; }
+}
 </style>
 </head>
 <body>
@@ -1836,6 +2090,71 @@ setSelectedOption(ele.querySelector('[iso=' + window[ele.id + 'Code'] + ']'), el
         }
       });
     }
+  })();
+</script>
+
+<script>
+  // Reports this document's real height to the parent page, so the iframe
+  // can be sized to the content instead of a fixed minHeight. Without this
+  // the frame keeps its reserved height and you get dead space under the
+  // Submit button.
+  //
+  // The parent (GetQuoteForm.tsx) listens for { type: 'bigin-height', height }.
+  // If it isn't listening, nothing here has any effect — the form still works
+  // standalone.
+  (function () {
+    var lastSent = 0;
+
+    function measure() {
+      var d = document;
+      return Math.ceil(
+        Math.max(
+          d.body ? d.body.scrollHeight : 0,
+          d.body ? d.body.offsetHeight : 0,
+          d.documentElement.scrollHeight,
+          d.documentElement.offsetHeight,
+          d.documentElement.getBoundingClientRect().height
+        )
+      );
+    }
+
+    function send() {
+      if (!window.parent || window.parent === window) return;
+      var h = measure();
+      // Ignore sub-pixel jitter; only report a real change.
+      if (Math.abs(h - lastSent) < 2) return;
+      lastSent = h;
+      window.parent.postMessage({ type: 'bigin-height', height: h }, '*');
+    }
+
+    // Initial + after fonts/wf_script settle.
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', send);
+    } else {
+      send();
+    }
+    window.addEventListener('load', send);
+    [100, 400, 1200, 2500].forEach(function (t) { setTimeout(send, t); });
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(send).catch(function () {});
+    }
+
+    // Anything that changes the layout: validation errors appearing, the
+    // textarea being dragged, the country menu opening, a viewport resize.
+    if (window.ResizeObserver) {
+      new ResizeObserver(send).observe(document.documentElement);
+    } else {
+      setInterval(send, 500);
+    }
+    if (window.MutationObserver) {
+      new MutationObserver(send).observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style'],
+      });
+    }
+    window.addEventListener('resize', send);
   })();
 </script>
 </body>

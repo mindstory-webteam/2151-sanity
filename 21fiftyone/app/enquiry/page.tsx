@@ -25,11 +25,16 @@ import GetQuoteForm from "../../component/GetQuoteForm";
 /* Local, same-origin hosted form (see GetQuoteForm.tsx for the handshake) */
 const GET_QUOTE_FORM_SRC = "/forms/get-quote.html";
 
-/* The form has no built-in auto-resize, so — same as before — we pick a
-   height up front. Bump these if the form ever grows/scrolls inside its
-   own frame. */
-const FORM_HEIGHT = 1220;
-const FORM_HEIGHT_MOBILE = 1320;
+/* PLACEHOLDER HEIGHTS ONLY.
+   get-quote.html now measures itself and posts
+   `{ type: 'bigin-height', height }` to GetQuoteForm, which sizes the
+   iframe to the real content height. These two numbers are used for the
+   single frame before that first measurement arrives — they exist so the
+   panel doesn't jump, nothing more. Keep them close to the true height:
+   too large and you get dead space under Submit on first paint, too small
+   and the panel visibly grows. They are NOT a height cap. */
+const FORM_HEIGHT = 700;
+const FORM_HEIGHT_MOBILE = 760;
 
 interface ServiceItem {
   tc: string;
@@ -111,9 +116,9 @@ const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
   );
 };
 
-/* ---------- Bigin enquiry panel: wraps GetQuoteForm with the same
-   reserved-space / height-by-breakpoint behaviour the old cross-origin
-   iframe had, so the panel never jumps on load. ---------- */
+/* ---------- Bigin enquiry panel: wraps GetQuoteForm. The frame sizes
+   itself to the form once get-quote.html reports its height; the value
+   below only reserves space for the first paint. ---------- */
 const EnquiryForm: React.FC<{ tracking: TrackingData; ready: boolean }> = ({ tracking, ready }) => {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -715,7 +720,8 @@ export default function Home() {
 }
 
 /* =========================================================
-   FULL ORIGINAL CSS — unchanged
+   FULL ORIGINAL CSS — unchanged except the .bigin-form rules
+   (see the "Zoho injects its own iframe here" block below)
    ========================================================= */
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500;1,600&family=Jost:wght@300;400;500;600;700&display=swap');
@@ -1005,9 +1011,24 @@ header.scrolled .menu-toggle span{background:var(--ivory);}
   font-size:13px;
   margin-bottom:18px;
 }
-/* Zoho injects its own iframe here — let it fill the panel */
-.bigin-form{width:100%; min-height:520px;}
-.bigin-form iframe{width:100% !important; border:0 !important; display:block;}
+/* Zoho's form lives in an iframe here. get-quote.html measures itself and
+   GetQuoteForm sets the frame height to match, so this wrapper must NOT
+   impose a floor of its own — a min-height here would hold the panel open
+   below the form and put dead space above the note. line-height:0 kills the
+   inline-box descender gap under the iframe; vertical-align does the same
+   job for browsers that ignore display:block on frames. */
+.bigin-form{
+  width:100%;
+  min-height:0;
+  font-size:0;
+  line-height:0;
+}
+.bigin-form iframe{
+  width:100% !important;
+  border:0 !important;
+  display:block;
+  vertical-align:bottom;
+}
 
 /* ---- Banner enquiry form ---- */
 .banner-form{
@@ -1158,6 +1179,7 @@ header.scrolled .menu-toggle span{background:var(--ivory);}
   margin-top:14px;
   text-align:center;
   letter-spacing:0.03em;
+  line-height:1.6;
 }
 
 /* ===== ABOUT (IMAGE SECTION) ===== */
