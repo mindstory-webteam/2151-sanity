@@ -1837,5 +1837,46 @@ setSelectedOption(ele.querySelector('[iso=' + window[ele.id + 'Code'] + ']'), el
     }
   });
 </script>
+
+<script>
+  // Fills the hidden `returnURL` field right before Zoho's own submit
+  // handler runs, so a successful enquiry redirects to THIS site's own
+  // /thank-you page instead of Zoho's default response — e.g.
+  //   https://21fiftyone.com/thank-you?name=Jishnu+Mindstory&service=Visual+Production&from=banner
+  // Because this file is served same-origin from the Next.js site,
+  // window.location.origin is already localhost:3000 in dev and
+  // 21fiftyone.com in production, so nothing here needs to change
+  // between environments.
+  (function () {
+    var FORM_ID = 'BiginWebToRecordForm7522188000000623170';
+
+    function urlEncode(value) {
+      // application/x-www-form-urlencoded style: spaces as "+"
+      return encodeURIComponent(value || '').replace(/%20/g, '+');
+    }
+
+    function buildReturnUrl(form) {
+      var nameField = form.elements['Potential Name'];
+      var serviceField = form.elements['POTENTIALCF1'];
+      var name = nameField ? nameField.value.trim() : '';
+      var service = serviceField ? serviceField.value.trim() : '';
+      var query =
+        'name=' + urlEncode(name) +
+        '&service=' + urlEncode(service) +
+        '&from=banner';
+      return window.location.origin + '/thank-you?' + query;
+    }
+
+    var form = document.getElementById(FORM_ID);
+    if (form) {
+      form.addEventListener('submit', function () {
+        var returnUrlField = form.elements['returnURL'];
+        if (returnUrlField) {
+          returnUrlField.value = buildReturnUrl(form);
+        }
+      });
+    }
+  })();
+</script>
 </body>
 </html>
