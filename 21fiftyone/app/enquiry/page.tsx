@@ -1,2083 +1,1490 @@
 "use client";
 
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-/* ------------------------------------------------------------------ */
-/* Country dial codes                                                  */
-/* ------------------------------------------------------------------ */
+/* =========================================================
+   ZOHO BIGIN — HOSTED FORM (IFRAME EMBED)
+   ---------------------------------------------------------
+   This account lives on us.bigin.online, not bigin.zoho.com.
+   That is why the earlier hand-built POST to
+   bigin.zoho.com/crm/WebToRecordForm never created records:
+   right payload, wrong data centre.
 
-interface Country {
-  iso: string;
-  fl: string;
-  ds: string;
-  dial: string;
+   We now embed Zoho's hosted form URL directly in an iframe
+   instead of injecting their loader script. The iframe is
+   simpler and immune to React StrictMode double-mounting,
+   and the form still ships its own validation, security
+   token and reCAPTCHA, so the lead is guaranteed to reach
+   the pipeline.
+   ========================================================= */
+const BIGIN_FORM_SRC = "https://us.bigin.online/org935134661/forms/2151-get-quote";
+
+/* Zoho serves this form at a fixed height. Because the iframe is
+   cross-origin the browser cannot measure its content, so the height
+   has to be declared here. Bump it if the form ever scrolls inside
+   its own frame. */
+const BIGIN_FORM_HEIGHT = 1220;
+const BIGIN_FORM_HEIGHT_MOBILE = 1320;
+
+/* Zoho's hosted form can be prefilled through the query string using
+   the field API names. Set this to false if the form ever fails to
+   render — an unexpected parameter is the first thing to rule out. */
+const PREFILL_TRACKING = true;
+
+interface ServiceItem {
+  tc: string;
+  title: string;
+  desc: string;
+  video: string;
 }
 
-const countries: Country[] = [
-  { iso: "af", fl: "&#127462&#127467;", ds: "Afghanistan", dial: "+93" },
-  { iso: "al", fl: "&#127462&#127473;", ds: "Albania", dial: "+355" },
-  { iso: "dz", fl: "&#127465&#127487;", ds: "Algeria", dial: "+213" },
-  { iso: "as", fl: "&#127462&#127480;", ds: "American Samoa", dial: "+1684" },
-  { iso: "ad", fl: "&#127462&#127465;", ds: "Andorra", dial: "+376" },
-  { iso: "ao", fl: "&#127462&#127476;", ds: "Angola", dial: "+244" },
-  { iso: "ai", fl: "&#127462&#127470;", ds: "Anguilla", dial: "+1264" },
-  { iso: "aq", fl: "&#127462&#127478;", ds: "Antarctica", dial: "+672" },
-  { iso: "ag", fl: "&#127462&#127468;", ds: "Antigua & Barbuda", dial: "+1268" },
-  { iso: "ar", fl: "&#127462&#127479;", ds: "Argentina", dial: "+54" },
-  { iso: "am", fl: "&#127462&#127474;", ds: "Armenia", dial: "+374" },
-  { iso: "aw", fl: "&#127462&#127484;", ds: "Aruba", dial: "+297" },
-  { iso: "au", fl: "&#127462&#127482;", ds: "Australia", dial: "+61" },
-  { iso: "at", fl: "&#127462&#127481;", ds: "Austria", dial: "+43" },
-  { iso: "az", fl: "&#127462&#127487;", ds: "Azerbaijan", dial: "+994" },
-  { iso: "bs", fl: "&#127463&#127480;", ds: "Bahamas", dial: "+1242" },
-  { iso: "bh", fl: "&#127463&#127469;", ds: "Bahrain", dial: "+973" },
-  { iso: "bd", fl: "&#127463&#127465;", ds: "Bangladesh", dial: "+880" },
-  { iso: "bb", fl: "&#127463&#127463;", ds: "Barbados", dial: "+1246" },
-  { iso: "by", fl: "&#127463&#127486;", ds: "Belarus", dial: "+375" },
-  { iso: "be", fl: "&#127463&#127466;", ds: "Belgium", dial: "+32" },
-  { iso: "bz", fl: "&#127463&#127487;", ds: "Belize", dial: "+501" },
-  { iso: "bj", fl: "&#127463&#127471;", ds: "Benin", dial: "+229" },
-  { iso: "bm", fl: "&#127463&#127474;", ds: "Bermuda", dial: "+1441" },
-  { iso: "bt", fl: "&#127463&#127481;", ds: "Bhutan", dial: "+975" },
-  { iso: "bo", fl: "&#127463&#127476;", ds: "Bolivia", dial: "+591" },
-  { iso: "ba", fl: "&#127463&#127462;", ds: "Bosnia and Herzegovina", dial: "+387" },
-  { iso: "bw", fl: "&#127463&#127484;", ds: "Botswana", dial: "+267" },
-  { iso: "bv", fl: "&#127463&#127483;", ds: "Bouvet Island", dial: "+47" },
-  { iso: "br", fl: "&#127463&#127479;", ds: "Brazil", dial: "+55" },
-  { iso: "io", fl: "&#127470&#127476;", ds: "British Indian Ocean Territory", dial: "+246" },
-  { iso: "vg", fl: "&#127483&#127468;", ds: "British Virgin Islands", dial: "+1284" },
-  { iso: "bn", fl: "&#127463&#127475;", ds: "Brunei", dial: "+673" },
-  { iso: "bg", fl: "&#127463&#127468;", ds: "Bulgaria", dial: "+359" },
-  { iso: "bf", fl: "&#127463&#127467;", ds: "Burkina Faso", dial: "+226" },
-  { iso: "bi", fl: "&#127463&#127470;", ds: "Burundi", dial: "+257" },
-  { iso: "kh", fl: "&#127472&#127469;", ds: "Cambodia", dial: "+855" },
-  { iso: "cm", fl: "&#127464&#127474;", ds: "Cameroon", dial: "+237" },
-  { iso: "ca", fl: "&#127464&#127462;", ds: "Canada", dial: "+1" },
-  { iso: "", fl: "&#127464&#127483;", ds: "Cape Verde", dial: "+238" },
-  { iso: "cv", fl: "&#127463&#127478;", ds: "Caribbean Netherlands", dial: "+599" },
-  { iso: "ky", fl: "&#127472&#127486;", ds: "Cayman Islands", dial: "+1345" },
-  { iso: "cf", fl: "&#127464&#127467;", ds: "Central African Republic", dial: "+236" },
-  { iso: "td", fl: "&#127481&#127465;", ds: "Chad", dial: "+235" },
-  { iso: "cl", fl: "&#127464&#127473;", ds: "Chile", dial: "+56" },
-  { iso: "cn", fl: "&#127464&#127475;", ds: "China", dial: "+86" },
-  { iso: "cx", fl: "&#127464&#127485;", ds: "Christmas Island", dial: "+61" },
-  { iso: "cc", fl: "&#127464&#127464;", ds: "Cocos (Keeling) Island", dial: "+61" },
-  { iso: "co", fl: "&#127464&#127476;", ds: "Colombia", dial: "+57" },
-  { iso: "km", fl: "&#127472&#127474;", ds: "Comoros", dial: "+269" },
-  { iso: "cg", fl: "&#127464&#127468;", ds: "Congo - Brazzaville", dial: "+242" },
-  { iso: "cd", fl: "&#127464&#127465;", ds: "Congo - Kinshasa", dial: "+243" },
-  { iso: "ck", fl: "&#127464&#127472;", ds: "Cook Islands", dial: "+682" },
-  { iso: "cr", fl: "&#127464&#127479;", ds: "Costa Rica", dial: "+506" },
-  { iso: "hr", fl: "&#127469&#127479;", ds: "Croatia", dial: "+385" },
-  { iso: "cu", fl: "&#127464&#127482;", ds: "Cuba", dial: "+53" },
-  { iso: "cw", fl: "&#127464&#127484;", ds: "Curaçao", dial: "+599" },
-  { iso: "cy", fl: "&#127464&#127486;", ds: "Cyprus", dial: "+357" },
-  { iso: "cz", fl: "&#127464&#127487;", ds: "Czechia", dial: "+420" },
-  { iso: "ci", fl: "&#127464&#127470;", ds: "Côte d'Ivoire", dial: "+225" },
-  { iso: "dk", fl: "&#127465&#127472;", ds: "Denmark", dial: "+45" },
-  { iso: "dj", fl: "&#127465&#127471;", ds: "Djibouti", dial: "+253" },
-  { iso: "dm", fl: "&#127465&#127474;", ds: "Dominica", dial: "+1767" },
-  { iso: "do", fl: "&#127465&#127476;", ds: "Dominican Republic", dial: "+1" },
-  { iso: "ec", fl: "&#127466&#127464;", ds: "Ecuador", dial: "+593" },
-  { iso: "eg", fl: "&#127466&#127468;", ds: "Egypt", dial: "+20" },
-  { iso: "sv", fl: "&#127480&#127483;", ds: "El Salvador", dial: "+503" },
-  { iso: "gq", fl: "&#127468&#127478;", ds: "Equatorial Guinea", dial: "+240" },
-  { iso: "er", fl: "&#127466&#127479;", ds: "Eritrea", dial: "+291" },
-  { iso: "ee", fl: "&#127466&#127466;", ds: "Estonia", dial: "+372" },
-  { iso: "et", fl: "&#127466&#127481;", ds: "Ethiopia", dial: "+251" },
-  { iso: "fk", fl: "&#127467&#127472;", ds: "Falkland Islands", dial: "+500" },
-  { iso: "fo", fl: "&#127467&#127476;", ds: "Faroe Islands", dial: "+298" },
-  { iso: "fj", fl: "&#127467&#127471;", ds: "Fiji", dial: "+679" },
-  { iso: "fi", fl: "&#127467&#127470;", ds: "Finland", dial: "+358" },
-  { iso: "fr", fl: "&#127467&#127479;", ds: "France", dial: "+33" },
-  { iso: "gf", fl: "&#127468&#127467;", ds: "French Guiana", dial: "+594" },
-  { iso: "pf", fl: "&#127477&#127467;", ds: "French Polynesia", dial: "+689" },
-  { iso: "tf", fl: "&#127481&#127467;", ds: "French Southern Territories", dial: "+262" },
-  { iso: "ga", fl: "&#127468&#127462;", ds: "Gabon", dial: "+241" },
-  { iso: "gm", fl: "&#127468&#127474;", ds: "Gambia", dial: "+220" },
-  { iso: "ge", fl: "&#127468&#127466;", ds: "Georgia", dial: "+995" },
-  { iso: "de", fl: "&#127465&#127466;", ds: "Germany", dial: "+49" },
-  { iso: "gh", fl: "&#127468&#127469;", ds: "Ghana", dial: "+233" },
-  { iso: "gi", fl: "&#127468&#127470;", ds: "Gibraltar", dial: "+350" },
-  { iso: "gr", fl: "&#127468&#127479;", ds: "Greece", dial: "+30" },
-  { iso: "gl", fl: "&#127468&#127473;", ds: "Greenland", dial: "+299" },
-  { iso: "gd", fl: "&#127468&#127465;", ds: "Grenada", dial: "+1473" },
-  { iso: "gp", fl: "&#127468&#127477;", ds: "Guadeloupe", dial: "+590" },
-  { iso: "gu", fl: "&#127468&#127482;", ds: "Guam", dial: "+1671" },
-  { iso: "gt", fl: "&#127468&#127481;", ds: "Guatemala", dial: "+502" },
-  { iso: "gg", fl: "&#127468&#127468;", ds: "Guernsey", dial: "+44" },
-  { iso: "gn", fl: "&#127468&#127475;", ds: "Guinea", dial: "+224" },
-  { iso: "gw", fl: "&#127468&#127484;", ds: "Guinea-Bissau", dial: "+245" },
-  { iso: "gy", fl: "&#127468&#127486;", ds: "Guyana", dial: "+592" },
-  { iso: "ht", fl: "&#127469&#127481;", ds: "Haiti", dial: "+509" },
-  { iso: "hm", fl: "&#127469&#127474;", ds: "Heard & McDonald Islands", dial: "+672" },
-  { iso: "hn", fl: "&#127469&#127475;", ds: "Honduras", dial: "+504" },
-  { iso: "hk", fl: "&#127469&#127472;", ds: "Hong Kong", dial: "+852" },
-  { iso: "hu", fl: "&#127469&#127482;", ds: "Hungary", dial: "+36" },
-  { iso: "is", fl: "&#127470&#127480;", ds: "Iceland", dial: "+354" },
-  { iso: "in", fl: "&#127470&#127475;", ds: "India", dial: "+91" },
-  { iso: "id", fl: "&#127470&#127465;", ds: "Indonesia", dial: "+62" },
-  { iso: "ir", fl: "&#127470&#127479;", ds: "Iran", dial: "+98" },
-  { iso: "iq", fl: "&#127470&#127478;", ds: "Iraq", dial: "+964" },
-  { iso: "ie", fl: "&#127470&#127466;", ds: "Ireland", dial: "+353" },
-  { iso: "im", fl: "&#127470&#127474;", ds: "Isle of Man", dial: "+44" },
-  { iso: "il", fl: "&#127470&#127473;", ds: "Israel", dial: "+972" },
-  { iso: "it", fl: "&#127470&#127481;", ds: "Italy", dial: "+39" },
-  { iso: "jm", fl: "&#127471&#127474;", ds: "Jamaica", dial: "+1876" },
-  { iso: "jp", fl: "&#127471&#127477;", ds: "Japan", dial: "+81" },
-  { iso: "je", fl: "&#127471&#127466;", ds: "Jersey", dial: "+44" },
-  { iso: "jo", fl: "&#127471&#127476;", ds: "Jordan", dial: "+962" },
-  { iso: "kz", fl: "&#127472&#127487;", ds: "Kazakhstan", dial: "+7" },
-  { iso: "ke", fl: "&#127472&#127466;", ds: "Kenya", dial: "+254" },
-  { iso: "ki", fl: "&#127472&#127470;", ds: "Kiribati", dial: "+686" },
-  { iso: "xk", fl: "&#127485&#127472;", ds: "Kosovo", dial: "+383" },
-  { iso: "kw", fl: "&#127472&#127484;", ds: "Kuwait", dial: "+965" },
-  { iso: "kg", fl: "&#127472&#127468;", ds: "Kyrgyzstan", dial: "+996" },
-  { iso: "la", fl: "&#127473&#127462;", ds: "Laos", dial: "+856" },
-  { iso: "lv", fl: "&#127473&#127483;", ds: "Latvia", dial: "+371" },
-  { iso: "lb", fl: "&#127473&#127463;", ds: "Lebanon", dial: "+961" },
-  { iso: "ls", fl: "&#127473&#127480;", ds: "Lesotho", dial: "+266" },
-  { iso: "lr", fl: "&#127473&#127479;", ds: "Liberia", dial: "+231" },
-  { iso: "ly", fl: "&#127473&#127486;", ds: "Libya", dial: "+218" },
-  { iso: "li", fl: "&#127473&#127470;", ds: "Liechtenstein", dial: "+423" },
-  { iso: "lt", fl: "&#127473&#127481;", ds: "Lithuania", dial: "+370" },
-  { iso: "lu", fl: "&#127473&#127482;", ds: "Luxembourg", dial: "+352" },
-  { iso: "mo", fl: "&#127474&#127476;", ds: "Macao", dial: "+853" },
-  { iso: "mk", fl: "&#127474&#127472;", ds: "Macedonia", dial: "+389" },
-  { iso: "mg", fl: "&#127474&#127468;", ds: "Madagascar", dial: "+261" },
-  { iso: "mw", fl: "&#127474&#127484;", ds: "Malawi", dial: "+265" },
-  { iso: "my", fl: "&#127474&#127486;", ds: "Malaysia", dial: "+60" },
-  { iso: "mv", fl: "&#127474&#127483;", ds: "Maldives", dial: "+960" },
-  { iso: "ml", fl: "&#127474&#127473;", ds: "Mali", dial: "+223" },
-  { iso: "mt", fl: "&#127474&#127481;", ds: "Malta", dial: "+356" },
-  { iso: "mh", fl: "&#127474&#127469;", ds: "Marshall Islands", dial: "+692" },
-  { iso: "mq", fl: "&#127474&#127478;", ds: "Martinique", dial: "+596" },
-  { iso: "mr", fl: "&#127474&#127479;", ds: "Mauritania", dial: "+222" },
-  { iso: "mu", fl: "&#127474&#127482;", ds: "Mauritius", dial: "+230" },
-  { iso: "yt", fl: "&#127486&#127481;", ds: "Mayotte", dial: "+262" },
-  { iso: "mx", fl: "&#127474&#127485;", ds: "Mexico", dial: "+52" },
-  { iso: "fm", fl: "&#127467&#127474;", ds: "Micronesia", dial: "+691" },
-  { iso: "md", fl: "&#127474&#127465;", ds: "Moldova", dial: "+373" },
-  { iso: "mc", fl: "&#127474&#127464;", ds: "Monaco", dial: "+377" },
-  { iso: "mn", fl: "&#127474&#127475;", ds: "Mongolia", dial: "+976" },
-  { iso: "me", fl: "&#127474&#127466;", ds: "Montenegro", dial: "+382" },
-  { iso: "ms", fl: "&#127474&#127480;", ds: "Montserrat", dial: "+1664" },
-  { iso: "ma", fl: "&#127474&#127462;", ds: "Morocco", dial: "+212" },
-  { iso: "mz", fl: "&#127474&#127487;", ds: "Mozambique", dial: "+258" },
-  { iso: "mm", fl: "&#127474&#127474;", ds: "Myanmar (Burma)", dial: "+95" },
-  { iso: "na", fl: "&#127475&#127462;", ds: "Namibia", dial: "+264" },
-  { iso: "nr", fl: "&#127475&#127479;", ds: "Nauru", dial: "+674" },
-  { iso: "np", fl: "&#127475&#127477;", ds: "Nepal", dial: "+977" },
-  { iso: "nl", fl: "&#127475&#127473;", ds: "Netherlands", dial: "+31" },
-  { iso: "nc", fl: "&#127475&#127464;", ds: "New Caledonia", dial: "+687" },
-  { iso: "nz", fl: "&#127475&#127487;", ds: "New Zealand", dial: "+64" },
-  { iso: "ni", fl: "&#127475&#127470;", ds: "Nicaragua", dial: "+505" },
-  { iso: "ne", fl: "&#127475&#127466;", ds: "Niger", dial: "+227" },
-  { iso: "ng", fl: "&#127475&#127468;", ds: "Nigeria", dial: "+234" },
-  { iso: "nu", fl: "&#127475&#127482;", ds: "Niue", dial: "+683" },
-  { iso: "nf", fl: "&#127475&#127467;", ds: "Norfolk Island", dial: "+672" },
-  { iso: "kp", fl: "&#127472&#127477;", ds: "North Korea", dial: "+850" },
-  { iso: "mp", fl: "&#127474&#127477;", ds: "Northern Mariana Islands", dial: "+1670" },
-  { iso: "no", fl: "&#127475&#127476;", ds: "Norway", dial: "+47" },
-  { iso: "om", fl: "&#127476&#127474;", ds: "Oman", dial: "+968" },
-  { iso: "pk", fl: "&#127477&#127472;", ds: "Pakistan", dial: "+92" },
-  { iso: "pw", fl: "&#127477&#127484;", ds: "Palau", dial: "+680" },
-  { iso: "ps", fl: "&#127477&#127480;", ds: "Palestinian Territories", dial: "+970" },
-  { iso: "pa", fl: "&#127477&#127462;", ds: "Panama", dial: "+507" },
-  { iso: "pg", fl: "&#127477&#127468;", ds: "Papua New Guinea", dial: "+675" },
-  { iso: "py", fl: "&#127477&#127486;", ds: "Paraguay", dial: "+595" },
-  { iso: "pe", fl: "&#127477&#127466;", ds: "Peru", dial: "+51" },
-  { iso: "ph", fl: "&#127477&#127469;", ds: "Philippines", dial: "+63" },
-  { iso: "pn", fl: "&#127477&#127475;", ds: "Pitcairn Islands", dial: "+64" },
-  { iso: "pl", fl: "&#127477&#127473;", ds: "Poland", dial: "+48" },
-  { iso: "pt", fl: "&#127477&#127481;", ds: "Portugal", dial: "+351" },
-  { iso: "pr", fl: "&#127477&#127479;", ds: "Puerto Rico", dial: "+1" },
-  { iso: "qa", fl: "&#127478&#127462;", ds: "Qatar", dial: "+974" },
-  { iso: "ro", fl: "&#127479&#127476;", ds: "Romania", dial: "+40" },
-  { iso: "ru", fl: "&#127479&#127482;", ds: "Russia", dial: "+7" },
-  { iso: "rw", fl: "&#127479&#127484;", ds: "Rwanda", dial: "+250" },
-  { iso: "re", fl: "&#127479&#127466;", ds: "Réunion", dial: "+262" },
-  { iso: "ws", fl: "&#127484&#127480;", ds: "Samoa", dial: "+685" },
-  { iso: "sm", fl: "&#127480&#127474;", ds: "San Marino", dial: "+378" },
-  { iso: "sa", fl: "&#127480&#127462;", ds: "Saudi Arabia", dial: "+966" },
-  { iso: "sn", fl: "&#127480&#127475;", ds: "Senegal", dial: "+221" },
-  { iso: "rs", fl: "&#127479&#127480;", ds: "Serbia", dial: "+381" },
-  { iso: "sc", fl: "&#127480&#127464;", ds: "Seychelles", dial: "+248" },
-  { iso: "sl", fl: "&#127480&#127473;", ds: "Sierra Leone", dial: "+232" },
-  { iso: "sg", fl: "&#127480&#127468;", ds: "Singapore", dial: "+65" },
-  { iso: "sx", fl: "&#127480&#127485;", ds: "Sint Maarten", dial: "+1721" },
-  { iso: "sk", fl: "&#127480&#127472;", ds: "Slovakia", dial: "+421" },
-  { iso: "si", fl: "&#127480&#127470;", ds: "Slovenia", dial: "+386" },
-  { iso: "sb", fl: "&#127480&#127463;", ds: "Solomon Islands", dial: "+677" },
-  { iso: "so", fl: "&#127480&#127476;", ds: "Somalia", dial: "+252" },
-  { iso: "za", fl: "&#127487&#127462;", ds: "South Africa", dial: "+27" },
-  { iso: "gs", fl: "&#127468&#127480;", ds: "South Georgia & South Sandwich Islands", dial: "+500" },
-  { iso: "kr", fl: "&#127472&#127479;", ds: "South Korea", dial: "+82" },
-  { iso: "ss", fl: "&#127480&#127480;", ds: "South Sudan", dial: "+211" },
-  { iso: "es", fl: "&#127466&#127480;", ds: "Spain", dial: "+34" },
-  { iso: "lk", fl: "&#127473&#127472;", ds: "Sri Lanka", dial: "+94" },
-  { iso: "bl", fl: "&#127463&#127473;", ds: "St Barthélemy", dial: "+590" },
-  { iso: "sh", fl: "&#127480&#127469;", ds: "St Helena", dial: "+290" },
-  { iso: "kn", fl: "&#127472&#127475;", ds: "St Kitts & Nevis", dial: "+1869" },
-  { iso: "lc", fl: "&#127473&#127464;", ds: "St Lucia", dial: "+1758" },
-  { iso: "mf", fl: "&#127474&#127467;", ds: "St Martin", dial: "+590" },
-  { iso: "pm", fl: "&#127477&#127474;", ds: "St Pierre & Miquelon", dial: "+508" },
-  { iso: "vc", fl: "&#127483&#127464;", ds: "St Vincent & Grenadines", dial: "+1784" },
-  { iso: "sd", fl: "&#127480&#127465;", ds: "Sudan", dial: "+249" },
-  { iso: "sr", fl: "&#127480&#127479;", ds: "Suriname", dial: "+597" },
-  { iso: "sj", fl: "&#127480&#127471;", ds: "Svalbard & Jan Mayen", dial: "+47" },
-  { iso: "sz", fl: "&#127480&#127487;", ds: "Swaziland", dial: "+268" },
-  { iso: "se", fl: "&#127480&#127466;", ds: "Sweden", dial: "+46" },
-  { iso: "ch", fl: "&#127464&#127469;", ds: "Switzerland", dial: "+41" },
-  { iso: "sy", fl: "&#127480&#127486;", ds: "Syria", dial: "+963" },
-  { iso: "st", fl: "&#127480&#127481;", ds: "São Tomé & Príncipe", dial: "+239" },
-  { iso: "tw", fl: "&#127481&#127484;", ds: "Taiwan", dial: "+886" },
-  { iso: "tj", fl: "&#127481&#127471;", ds: "Tajikistan", dial: "+992" },
-  { iso: "tz", fl: "&#127481&#127487;", ds: "Tanzania", dial: "+255" },
-  { iso: "th", fl: "&#127481&#127469;", ds: "Thailand", dial: "+66" },
-  { iso: "tl", fl: "&#127481&#127473;", ds: "Timor-Leste", dial: "+670" },
-  { iso: "tg", fl: "&#127481&#127468;", ds: "Togo", dial: "+228" },
-  { iso: "tk", fl: "&#127481&#127472;", ds: "Tokelau", dial: "+690" },
-  { iso: "to", fl: "&#127481&#127476;", ds: "Tonga", dial: "+676" },
-  { iso: "tt", fl: "&#127481&#127481;", ds: "Trinidad & Tobago", dial: "+1868" },
-  { iso: "tn", fl: "&#127481&#127475;", ds: "Tunisia", dial: "+216" },
-  { iso: "tr", fl: "&#127481&#127479;", ds: "Turkey", dial: "+90" },
-  { iso: "tm", fl: "&#127481&#127474;", ds: "Turkmenistan", dial: "+993" },
-  { iso: "tc", fl: "&#127481&#127464;", ds: "Turks & Caicos Islands", dial: "+1" },
-  { iso: "tv", fl: "&#127481&#127483;", ds: "Tuvalu", dial: "+688" },
-  { iso: "um", fl: "&#127482&#127474;", ds: "US Outlying Islands", dial: "+1" },
-  { iso: "vi", fl: "&#127483&#127470;", ds: "US Virgin Islands", dial: "+1340" },
-  { iso: "ug", fl: "&#127482&#127468;", ds: "Uganda", dial: "+256" },
-  { iso: "ua", fl: "&#127482&#127462;", ds: "Ukraine", dial: "+380" },
-  { iso: "ae", fl: "&#127462&#127466;", ds: "United Arab Emirates", dial: "+971" },
-  { iso: "gb", fl: "&#127468&#127463;", ds: "United Kingdom", dial: "+44" },
-  { iso: "us", fl: "&#127482&#127480;", ds: "United States", dial: "+1" },
-  { iso: "uy", fl: "&#127482&#127486;", ds: "Uruguay", dial: "+598" },
-  { iso: "uz", fl: "&#127482&#127487;", ds: "Uzbekistan", dial: "+998" },
-  { iso: "vu", fl: "&#127483&#127482;", ds: "Vanuatu", dial: "+678" },
-  { iso: "va", fl: "&#127483&#127462;", ds: "Vatican City", dial: "+379" },
-  { iso: "ve", fl: "&#127483&#127466;", ds: "Venezuela", dial: "+58" },
-  { iso: "vn", fl: "&#127483&#127475;", ds: "Vietnam", dial: "+84" },
-  { iso: "wf", fl: "&#127484&#127467;", ds: "Wallis & Futuna", dial: "+681" },
-  { iso: "eh", fl: "&#127466&#127469;", ds: "Western Sahara", dial: "+212" },
-  { iso: "ye", fl: "&#127486&#127466;", ds: "Yemen", dial: "+967" },
-  { iso: "zm", fl: "&#127487&#127474;", ds: "Zambia", dial: "+260" },
-  { iso: "zw", fl: "&#127487&#127484;", ds: "Zimbabwe", dial: "+263" },
-  { iso: "ax", fl: "&#127462&#127485;", ds: "Åland Islands", dial: "+672" },
+const SERVICES: ServiceItem[] = [
+  {
+    tc: "00:01",
+    title: "Visual Production",
+    desc: "Brand videos, product visuals, campaign content and social media video assets with a clear visual style.",
+    video: "/videos/banner/s-1.webm",
+  },
+  {
+    tc: "00:02",
+    title: "Movie Production",
+    desc: "Short films, music-led stories, cinematic projects and narrative content with full production support.",
+    video: "/videos/banner/s-2.webm",
+  },
+  {
+    tc: "00:03",
+    title: "Corporate Films",
+    desc: "Company profile videos, leadership videos, training videos and interview-led business stories.",
+    video: "/videos/banner/s-3.webm",
+  },
+  {
+    tc: "00:04",
+    title: "Commercial Production",
+    desc: "Ad films, product commercials, launch videos and campaign creatives for marketing-focused brands.",
+    video: "/videos/banner/s-4.webm",
+  },
+  {
+    tc: "00:05",
+    title: "AI Production",
+    desc: "AI tools for creative production, concept visuals, AI video anchors and faster campaign assets.",
+    video: "/videos/banner/s-5.webm",
+  },
+  {
+    tc: "00:06",
+    title: "Entertainment Events",
+    desc: "Event visuals for launches, performances, brand experiences and cultural programs.",
+    video: "/videos/banner/s-6.webm",
+  },
 ];
 
-/** Same value the original script built as `country.ref` (used for searching). */
-const countryRef = (c: Country): string => `${c.ds} ${c.dial}`;
+/* ---------- Service row with hover-video behaviour ---------- */
+const ServiceRow: React.FC<ServiceItem> = ({ tc, title, desc, video }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
 
-/* ------------------------------------------------------------------ */
-/* UTM / lead-source auto-capture                                      */
-/* ------------------------------------------------------------------ */
-
-interface TrackingValues {
-  /** POTENTIALCF4 – Lead Page URL */
-  leadPageUrl: string;
-  /** POTENTIALCF5 – UTM Source */
-  utmSource: string;
-  /** POTENTIALCF7 – UTM Campaign */
-  utmCampaign: string;
-  /** POTENTIALCF6 – UTM Content */
-  utmContent: string;
-}
-
-const EMPTY_TRACKING: TrackingValues = {
-  leadPageUrl: "",
-  utmSource: "",
-  utmCampaign: "",
-  utmContent: "",
-};
-
-/** Zoho caps these fields at 255 characters. */
-const truncate = (value: string, max = 255) =>
-  value.length > max ? value.slice(0, max) : value;
-
-function readStoredUtm(key: string): Partial<TrackingValues> {
-  try {
-    const raw = window.sessionStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Partial<TrackingValues>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeStoredUtm(key: string, values: TrackingValues) {
-  try {
-    window.sessionStorage.setItem(
-      key,
-      JSON.stringify({
-        utmSource: values.utmSource,
-        utmCampaign: values.utmCampaign,
-        utmContent: values.utmContent,
-      })
-    );
-  } catch {
-    /* private mode / storage disabled – tracking just won't persist */
-  }
-}
-
-/** Used only when the URL carries no utm_source. */
-function deriveSource(params: URLSearchParams): string {
-  if (params.get("gclid") || params.get("gbraid") || params.get("wbraid")) {
-    return "Google Ads";
-  }
-  if (params.get("fbclid")) return "Meta Ads";
-
-  const referrer = document.referrer;
-  if (!referrer) return "direct";
-  try {
-    const host = new URL(referrer).hostname.replace(/^www\./, "");
-    // Internal navigation tells us nothing about the original source.
-    return host === window.location.hostname.replace(/^www\./, "") ? "" : host;
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Reads the four tracking values from the current URL, falling back to the
- * values captured earlier in this browsing session (so a visitor can land on
- * `/?utm_source=…`, browse around, and still submit the right attribution).
- */
-function collectTracking(storageKey: string): TrackingValues {
-  const params = new URLSearchParams(window.location.search);
-  const stored = readStoredUtm(storageKey);
-
-  const fromUrl = (name: string) => (params.get(name) ?? "").trim();
-  const hasUtmInUrl =
-    !!fromUrl("utm_source") || !!fromUrl("utm_campaign") || !!fromUrl("utm_content");
-
-  const values: TrackingValues = {
-    leadPageUrl: truncate(window.location.href),
-    utmSource: truncate(
-      fromUrl("utm_source") || stored.utmSource || deriveSource(params)
-    ),
-    utmCampaign: truncate(fromUrl("utm_campaign") || stored.utmCampaign || ""),
-    utmContent: truncate(fromUrl("utm_content") || stored.utmContent || ""),
-  };
-
-  if (hasUtmInUrl || !stored.utmSource) writeStoredUtm(storageKey, values);
-
-  return values;
-}
-
-/* ------------------------------------------------------------------ */
-/* Stylesheet (original Zoho form CSS, injected with the component)    */
-/* ------------------------------------------------------------------ */
-
-const BIGIN_FORM_CSS = `
-/* COMMON STYLES */
-:root,
-html {
-  font-size: 10px;
-}
-.wf-parent * {
-  padding: 0;
-  margin: 0;
-  outline: 0;
-}
-.wf-parent {
-  font-weight: normal;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #edf1f4;
-  font-size: 15px;
-}
-.wf-parent ul,
-.wf-parent ol {
-  list-style-position: inside;
-}
-.wf-parent textarea,
-.wf-parent input[type='text'],
-.wf-parent input[type='button'],
-.wf-parent input[type='submit'],
-.wf-parent input[type='date'] {
-  -webkit-appearance: none;
-}
-.wf-parent input:focus,
-.wf-parent select:focus,
-.wf-parent textarea:focus,
-.wf-parent button:focus {
-  outline: none;
-}
-.link {
-  color: #1980d8;
-  cursor: pointer;
-}
-.cP {
-  cursor: pointer;
-}
-.flex-center-v {
-  display: flex;
-  align-items: center;
-}
-/* COMMON STYLES */
-.wf-form-component {
-  padding: 30px 40px 60px;
-}
-.wf-form-paid {
-  padding-bottom: 45px;
-}
-.wf-parent {
-  padding: 30px 0;
-  height: 100%;
-  box-sizing: border-box;
-  overflow: auto;
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
-}
-.wf-wrapper * {
-  box-sizing: border-box;
-}
-.wf-wrapper {
-  width: 100%;
-  max-width: 700px;
-  border-radius: 10px;
-  margin: auto;
-  border: none;
-  background-color: #fff;
-  color: #222;
-  box-shadow: 0px 0px 2px 0 #00000033;
-}
-.iframe-container {
-  height: 100%;
-  width: 100%;
-  border: none;
-  min-height: 365px;
-}
-.wf-logo {
-  display: flex;
-  margin-bottom: 30px;
-  max-height: 60px;
-  justify-content: center;
-}
-.wf-logo[data-ux-logo-size='lg'] {
-  height: 60px;
-}
-.wf-logo[data-ux-logo-size='md'] {
-  height: 50px;
-}
-.wf-logo[data-ux-logo-size='sm'] {
-  height: 30px;
-}
-.wf-logo[data-ux-logo-pos='left'] {
-  justify-content: left;
-}
-.wf-logo[data-ux-logo-pos='center'] {
-  justify-content: center;
-}
-.wf-logo[data-ux-logo-pos='right'] {
-  justify-content: right;
-}
-.wf-header {
-  font-size: 22px;
-  padding-bottom: 35px;
-  font-weight: bold;
-  word-break: break-word;
-}
-.wf-sec-wrap {
-  margin-bottom: 40px;
-}
-.wf-sec-wrap:first-child .wf-sec-head {
-  margin-top: 0;
-}
-.wf-sec-head {
-  margin-bottom: 20px;
-  margin-top: 35px;
-}
-.wf-sec-title {
-  font-size: 18px;
-  font-weight: bold;
-  word-break: break-word;
-}
-.wf-sec-desc {
-  margin: 0;
-  margin-top: 5px;
-  word-break: break-word;
-}
-.wf-row {
-  margin-bottom: 20px;
-}
-.wf-row-with-supplementary {
-  margin-bottom: 10px;
-}
-.wf-label {
-  padding: 7px 0;
-  word-break: break-word;
-}
-.wf-field:not(.multiple-fields-div) {
-  text-align: left;
-  word-break: break-word;
-  border: 0;
-  position: relative;
-}
-.wf-field-inner {
-  position: relative;
-  display: flex;
-  flex: 1;
-}
-.wf-field-input:focus {
-  border: 1px solid #1980d8;
-}
-.wf-field-dropdown .wf-field-input:focus {
-  border: none; /* multipicklist search */
-}
-.wf-input-focus.wf-field::after {
-  opacity: 1;
-}
-.wf-input-focus.wf-field::after,
-.wf-field-error-active.wf-field .wf-field-error {
-  display: block;
-}
-.wf-field-error-active.wf-field .wf-error-view-more {
-  display: flex;
-}
-.wf-field-error-active.wf-field .wf-field-input:not(.date-input-container .wf-field-input),
-.wf-field-error-active.wf-field .wf-field-dropdown,
-.wf-field-error-active .date-input-container {
-  border: 1px solid #fd6b6d;
-  box-shadow: 0 0 1px 1px #f4a2a2;
-}
-.wf-field-mandatory .wf-field-inner::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: 0px;
-  background-color: #ff6a6a;
-  width: 3px;
-  height: 100%;
-  border-start-start-radius: 4px;
-  border-end-start-radius: 4px;
-  z-index: 2;
-  top: 0;
-  bottom: 0;
-}
-.wf-field-mandatory .wf-field-inner.no-results-elem::before {
-  height: 98%;
-}
-.wf-field-input,
-.wf-field-dropdown {
-  width: 100%;
-  border: 1px solid #bdc8d3;
-  border-radius: 4px;
-  padding: 10px 15px;
-  min-height: 38px;
-  font-size: 15px;
-  font-family: inherit;
-}
-.wf-parent select:not([data-wform-field='select-multiple']) {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background: transparent;
-  background-image: url("data:image/svg+xml;utf8,<svg fill='black' height='34' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
-  background-repeat: no-repeat;
-  background-position-x: 99%;
-  background-color: #fff;
-  min-width: 70px;
-}
-.wf-parent input,
-.wf-parent select {
-  background-color: #fff;
-}
-.wf-field-item {
-  min-height: 38px;
-}
-.wf-time-field-wrapper {
-  display: flex;
-  flex: 1;
-}
-.wf-time-field-wrapper select {
-  margin-left: 10px;
-}
-.wf-form-component .wf-field-error,
-.wf-form-component .wf-field-help-text {
-  text-align: left;
-}
-.wf-form-component .wf-field-error {
-  text-align: right;
-}
-.wf-field-error {
-  color: #ff5050;
-  font-size: 12px;
-  margin-top: 4px;
-  display: none;
-  animation: shake 0.82s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  perspective: 1000px;
-}
-.wf-field-error-long {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.wf-error-view-more {
-  font-size: 12px;
-  display: none;
-  white-space: nowrap;
-  align-items: center;
-  color: #1880d8;
-  margin-top: 4px;
-}
-.wf-error-view-more:hover {
-  text-decoration: underline;
-  cursor: pointer;
-}
-.wf-error-parent-ele {
-  display: flex;
-  justify-content: end;
-}
-.wf-field-help-text {
-  color: #515159;
-  font-size: 12px;
-  margin-top: 5px;
-}
-.wf-field-help-text + .wf-error-parent-ele .wf-field-error,
-.wf-field-help-text + .wf-error-parent-ele .wf-error-view-more {
-  margin: 0;
-}
-.wf-field-help-text-link {
-  text-decoration: none;
-}
-.wf-field-checkbox {
-  cursor: pointer;
-  border-radius: 3px;
-  min-width: 14px;
-  min-height: 20px;
-  box-sizing: initial;
-  accent-color: #1980d8;
-  margin-inline-end: 10px;
-  margin-bottom: auto;
-}
-.wf-field-dropdown-date {
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 15px;
-  cursor: pointer;
-}
-.wf-field-dropdown-date {
-  border: 1px solid #bdc8d3;
-}
-.wf-field-dropdown-date:hover {
-  border: 1px solid #65c199;
-}
-.wform-field-item-upload-input {
-  min-height: 5rem;
-  background-color: #fbfcfd;
-  border: 1px dashed #bdc8d3;
-  line-height: 2.1;
-  cursor: pointer;
-}
-.wform-field-item-upload-input:focus {
-  border: 1px dashed #bdc8d3;
-}
-.wform-file-upload-input-label {
-  background-color: #fff;
-  background-image: linear-gradient(to top, #f5f8fa, #ffffff);
-  color: #212129;
-  border-color: #d3dbe3;
-  border: 1px solid #d3dbe3;
-  border-radius: 4px;
-  padding: 0.7rem 2rem;
-  font-size: 1.4rem;
-  inset-inline-end: 1rem;
-  transform: translateY(-50%);
-  top: 50%;
-  position: absolute;
-}
-.wf-parent input[type='file']::file-selector-button,
-.wf-parent input[type='file']::-webkit-file-upload-button {
-  opacity: 0;
-  width: 0;
-  height: 28px;
-}
-.wf-row[data-ux-field-appearance='captcha'] .wf-field {
-  display: flex;
-  align-items: center;
-}
-.wform-field-item-captcha-input {
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
-}
-.wf-field-captcha-img-wrap {
-  border: 1px solid #bdc8d3;
-  border-radius: 4px;
-  border-inline-start: 0;
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
-  height: initial;
-  overflow: hidden;
-  min-width: 120px;
-}
-.wf-field-captcha-img {
-  height: 38px;
-  width: 100%;
-}
-.reload-img {
-  font-size: 23px;
-  color: #4b5569;
-  margin-inline-end: 5px;
-}
-.reload-captcha {
-  margin-inline-start: 10px;
-  user-select: none;
-}
-.wf-btn {
-  padding: 10px 20px;
-  border-radius: 4px;
-  font-size: 15px;
-  cursor: pointer;
-  font-weight: bold;
-  font-family: inherit;
-}
-.wf-btn[data-ux-btn-type='default'] {
-  border-radius: 0;
-}
-.wf-btn[data-ux-btn-type='primary'] {
-  border-radius: 4px;
-}
-.wf-btn[data-ux-btn-type='secondary'] {
-  border-radius: 20px;
-}
-.wform-btn-wrap {
-  display: flex;
-  margin-top: 40px;
-  align-items: center;
-  justify-content: flex-end;
-  flex: 1;
-}
-.wform-poweredby-container {
-  position: absolute;
-  inset-inline-start: 0;
-  bottom: 0;
-  border-start-end-radius: 10px;
-  border-end-start-radius: 10px;
-  background-color: #23384f;
-  font-size: 13px;
-  padding: 6px 8px;
-  font-family: sans-serif;
-  display: flex;
-  align-items: center;
-}
-.wf-text-area-input {
-  resize: vertical;
-  height: 100px;
-  min-height: 100px;
-  max-height: 200px;
-}
-.dropdown-contents::after {
-  border-left: 0.4rem solid transparent;
-  border-right: 0.4rem solid transparent;
-  border-top: 0.4rem solid black;
-  top: 45%;
-  content: '';
-  position: absolute;
-  inset-inline-end: 1rem;
-  pointer-events: none;
-}
-
-/* ==================== * MultiPicklist Styles * ==================== */
-.multiselect.wf-field-dropdown {
-  padding: 0;
-  cursor: text;
-  position: relative;
-}
-.multiselect.dropbox-active {
-  border-color: #1980d8;
-  border-radius: 4px 4px 0 0;
-}
-.multiselect.dropbox-active.dropdownTop:not(.ux-pick-mixed .multiselect.dropbox-active) {
-  border-radius: 0 0 4px 4px;
-}
-.multiselect.dropbox-active.dropdownTop:not(.ux-pick-mixed .multiselect.dropbox-active) .dropdown-input {
-  min-height: 36px;
-  border-radius: 0 0 4px 4px;
-}
-.multiselect.no-results-elem {
-  border-radius: 4px;
-}
-.selected-options.selected-options-field {
-  display: none;
-}
-.selected-options {
-  max-height: 150px;
-  overflow: auto;
-  padding: 3px 5px 7px 5px;
-  border-radius: 4px 4px 0 0;
-  border-bottom: 0;
-  min-height: 38px;
-  height: 38px;
-  transition: 0.3s all;
-  scroll-behavior: smooth;
-}
-.selected-options.hide-opt-list {
-  min-height: 0;
-  height: 0;
-  padding: 0;
-}
-.selected-options.set-opt-list {
-  height: auto;
-}
-.selected-options.drp-dwn-no-val {
-  border-right: unset !important;
-}
-.dropdown-input.drop-box-closed {
-  border-bottom-right-radius: 4px;
-  border-bottom-left-radius: 4px;
-}
-.dropdown-input.drop-box-active {
-  border-top-right-radius: 0 !important;
-  border-radius: 4px;
-}
-.dN {
-  display: none !important;
-}
-.dropdown {
-  position: relative;
-  width: 100%;
-  height: 36px;
-  transition: 0.3s all;
-}
-.dropdown.hide-dropdown {
-  height: 0;
-}
-.dropdown-input {
-  width: 100%;
-  border: none;
-  outline: none;
-  height: 30px;
-  padding: 5px;
-  border-radius: 4px;
-  border-radius: 4px 4px 0 0;
-  padding-left: 14px;
-}
-.dropdown-input::placeholder {
-  color: #919191;
-  font-size: 14px;
-}
-.dropdown-menu {
-  position: absolute;
-  display: none;
-  background-color: #fff;
-  border: 1px solid #bdc8d3;
-  border-radius: 0 0 5px 5px;
-  max-height: 300px;
-  overflow-y: auto;
-  width: calc(100% + 2px);
-  left: -1px;
-  z-index: 3;
-  top: 37px;
-  transition: 0.3s all;
-}
-.dropdown-menu.hide-the-inp {
-  top: 0;
-}
-.dropdown.open .dropdown-menu {
-  display: block;
-}
-.dropdown-menu.dropdown-focus {
-  border-color: #1980d8;
-  border-top: 1px solid #e6ebf1;
-}
-.dropdown-menu.dropdown-focus.dropdownTop:not(.ux-pick-mixed .dropdown-menu.dropdown-focus) {
-  border-top: 1px solid #1980d8;
-  border-radius: 5px 5px 0 0;
-}
-.multiselect.dropbox-active .dropdown-input {
-  border-top: 0;
-  border-bottom: 0;
-  padding-bottom: 17px;
-  padding-top: 19px;
-  border-left-color: transparent;
-}
-.multi-tag {
-  background-color: #ceebff;
-  padding-inline-end: 5px !important;
-  padding-inline-start: 10px !important;
-  padding: 2px 5px 3px 10px;
-  border-radius: 15px;
-  margin: 5px 5px 0 2px;
-  display: inline-flex;
-  max-width: 96%;
-}
-.tag-data-val {
-  cursor: default;
-  max-width: 550px;
-}
-.no-results {
-  cursor: default !important;
-  text-align: center;
-  color: #919191;
-  font-size: 14px;
-}
-.no-results:hover {
-  background-color: unset !important;
-}
-.opt-hide {
-  display: none;
-}
-.opt-show {
-  display: block;
-}
-.tag-close-btn {
-  margin-inline-start: 3px;
-  padding: 0px 4px 0px;
-  border-radius: 50%;
-  opacity: 0.5;
-  font-weight: bold;
-  cursor: pointer;
-}
-.multi-tag:hover .tag-close-btn {
-  opacity: 1;
-}
-.option {
-  padding: 10px 14px;
-  cursor: pointer;
-  border-bottom: 1px solid #f0f5f8;
-}
-.option:hover {
-  background-color: #f5f8fa;
-}
-.input-not-active {
-  display: none;
-}
-.ellipsis {
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
-}
-/* ==================== * MultiPicklist Styles * ==================== */
-
-.ux-pick-mixed .dropdown-contents {
-  padding: 3.5px 10px;
-  height: 100%;
-}
-.ux-pick-mixed .dropdown-menu {
-  width: max-content;
-  max-width: 30rem;
-  top: 42px;
-  border: 1px solid #d2dbe5;
-  border-radius: 4px;
-  box-shadow: 0 1px 15px 0 rgba(0, 0, 0, 0.2);
-}
-.ux-pick-mixed .dropdown-menu .option[data-selected='true'] {
-  background-color: #e2f3fc;
-  font-weight: 600;
-}
-.ux-pick-mixed .wf-field-dropdown.dropbox-active::after {
-  content: '';
-  border: 2px solid #1980d8;
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  box-sizing: border-box;
-  z-index: 1;
-}
-.ux-pick-mixed .wf-field-item:not(.selected-options) {
-  min-height: 36px;
-}
-.wf-form-component:not([data-ux-form-alignment='top']) .multiple-fields-div {
-  width: 70%;
-}
-.icon-with-text-dropdown .dropdown > span {
-  margin-inline-end: 10px;
-}
-.icon-with-text-dropdown .icon-text-dropdown {
-  display: flex;
-  align-items: center;
-}
-.icon-with-text-dropdown .option {
-  padding: 4px 14px;
-}
-.dropdown-with-search .dropdown.open .dropdown-menu {
-  display: flex;
-  flex-direction: column;
-}
-.dropdown-with-search .dropdown-items-wrapper {
-  flex-grow: 1;
-  overflow-y: auto;
-}
-.multiple-fields-div {
-  display: flex;
-  flex-direction: column;
-}
-.multiple-fields-div.flex-1-5 .field-1 {
-  flex: 1;
-}
-.multiple-fields-div.flex-1-5 .field-2 {
-  flex: 5;
-}
-.multiple-fields-div .wf-field-dropdown {
-  border-radius: 4px 0px 0px 4px;
-  border-right: 0;
-}
-.multiple-fields-div .wf-field-item:not(.selected-options) {
-  border-radius: 0px 4px 4px 0px;
-}
-.multiple-fields-div.wf-field {
-  word-break: unset;
-}
-.dropdown-menu .dropdown-search-input {
-  padding: 5px 10px;
-  width: 92%;
-  margin: 10px;
-  border: 1px solid #cdd8e3;
-  border-radius: 4px;
-}
-.dropdown-menu .dropdown-search-input:hover {
-  border: 1px solid #1980d8;
-}
-.dropdown-menu .dropdown-search-input:focus {
-  border: 2px solid #1980d8;
-}
-/* RTL Css change start */
-[dir='rtl'] .multiple-fields-div .wf-field-item:not(.selected-options) {
-  border-radius: 4px 0px 0px 4px;
-}
-[dir='rtl'] .multiple-fields-div .wf-field-dropdown {
-  border-radius: 0px 4px 4px 0px;
-  border-left: 0;
-  border-right: 1px solid #bdc8d3;
-}
-[dir='rtl'] .ux-pick-mixed .dropdown-menu {
-  right: -1px;
-}
-[dir='rtl'] .wf-form-component[data-ux-form-alignment='left'] .wf-label {
-  padding-left: 2rem;
-  padding-right: 0;
-}
-[dir='rtl'] .wf-time-field-wrapper select {
-  margin-left: 0px;
-  margin-right: 10px;
-}
-[dir='rtl'] .wf-calendar-nav-icons.nav-icon-with-space {
-  margin-left: 10px;
-}
-[dir='rtl'] .wf-form-component .wf-field-help-text {
-  text-align: right;
-}
-/* RTL Css change end */
-
-/* ==================== *** Form Alignment *** ==================== */
-.wf-form-component:not([data-ux-form-alignment='top']) .wf-row {
-  display: flex;
-}
-.wf-form-component:not([data-ux-form-alignment='top']) .wf-label {
-  word-break: break-word;
-  width: 30%;
-  padding: 1.2rem 2rem 0;
-}
-.wf-form-component[data-ux-form-alignment='left'] .wf-label {
-  text-align: left;
-  padding-left: 0;
-}
-.wf-form-component[data-ux-form-alignment='right'] .wf-label {
-  text-align: right;
-}
-.wf-form-component[data-ux-form-alignment='center'] .wf-label {
-  text-align: center;
-}
-.wform-btn-wrap[data-ux-pos='left'] {
-  justify-content: flex-start;
-}
-.wform-btn-wrap[data-ux-pos='center'] {
-  justify-content: center;
-}
-.wform-btn-wrap[data-ux-pos='right'] {
-  justify-content: flex-end;
-}
-.wf-form-component:not([data-ux-form-alignment='top']) .wf-field {
-  width: 70%;
-}
-.wf-form-component[data-ux-form-alignment='top'] .wf-label {
-  padding-top: 0;
-}
-.wf-form-component[data-ux-form-alignment='top'] .reload-captcha {
-  text-align: right;
-}
-.wf-row[data-ux-field-appearance='captcha'] .wf-field-inner {
-  height: 38px;
-}
-.wf-row[data-ux-field-appearance='captcha'] .wf-field.wf-field-error-active {
-  flex-wrap: wrap;
-}
-.wf-row[data-ux-field-appearance='captcha'] .wf-field-error {
-  flex-basis: 100%;
-  width: 100%;
-  margin-inline-start: 5px;
-}
-/* ==================== *** Form Alignment ends *** ==================== */
-
-/* ==================== *** css animations *** ==================== */
-@keyframes shake {
-  10%,
-  90% {
-    transform: translate3d(-1px, 0, 0);
-  }
-  20%,
-  80% {
-    transform: translate3d(2px, 0, 0);
-  }
-  30%,
-  50%,
-  70% {
-    transform: translate3d(-4px, 0, 0);
-  }
-  40%,
-  60% {
-    transform: translate3d(4px, 0, 0);
-  }
-}
-/* ==================== *** css animations ends *** ==================== */
-
-/* ==================== *** Mediaquery *** ==================== */
-@media screen and (max-width: 1024px) {
-  .wf-wrapper {
-    max-width: 700px;
-    width: calc(100% - 40px);
-    border: 0;
-  }
-  .wf-field input[type='text'],
-  .wf-field select,
-  .wf-field textarea {
-    width: 100% !important;
-  }
-  .wf-label:empty {
-    display: none;
-  }
-  .wf-field-checkbox {
-    min-width: 18px;
-    min-height: 18px;
-  }
-}
-@media screen and (max-width: 768px) {
-  .wf-wrapper {
-    max-width: 700px;
-    width: calc(100% - 40px);
-    border: 0;
-  }
-  .wf-field input[type='text'],
-  .wf-field select,
-  .wf-field textarea {
-    width: 100% !important;
-  }
-  .wf-label:empty {
-    display: none;
-  }
-  .wf-form-component[data-ux-form-alignment='top'] .wform-btn-wrap {
-    justify-content: flex-start;
-  }
-}
-@media screen and (max-width: 590px) {
-  .wf-parent {
-    padding: 20px 0;
-  }
-  .wf-wrapper {
-    width: calc(100% - 40px) !important;
-    border: 0;
-  }
-  .wf-form-component {
-    padding: 20px;
-    padding-bottom: 60px;
-  }
-  .wf-field input[type='text'],
-  .wf-field select,
-  .wf-field textarea {
-    width: 100% !important;
-  }
-  .wf-label:empty {
-    display: none;
-  }
-  .wf-row[data-ux-field-appearance='date-time'] .wf-field-inner {
-    flex-direction: column;
-  }
-  .wf-row[data-ux-field-appearance='date-time'] .wf-time-field-wrapper {
-    margin-top: 10px;
-  }
-  .wf-row[data-ux-field-appearance='date-time'] .wf-field-item:first-child {
-    margin-left: 0;
-  }
-  .wf-row[data-ux-field-appearance='date-time'] .wf-field-item {
-    flex: 1;
-  }
-  .wf-row[data-ux-field-appearance='captcha'] .wf-field {
-    flex-direction: column;
-  }
-  .wf-row[data-ux-field-appearance='captcha'] .reload-captcha {
-    margin-left: auto;
-  }
-  .wf-row[data-ux-field-appearance='captcha'] .wf-field-inner {
-    width: 100%;
-  }
-}
-/* ==================== *** Mediaquery ends *** ==================== */
-`;
-
-/* ------------------------------------------------------------------ */
-/* Constants copied straight from the original Zoho embed code        */
-/* ------------------------------------------------------------------ */
-
-const FORM_ID = "BiginWebToRecordForm7522188000000639254";
-const FORM_PARENT_ID = "BiginWebToRecordFormParent7522188000000639254";
-const FORM_DIV_ID = "BiginWebToRecordFormDiv7522188000000639254";
-const ELEMENT_DIV_ID = "elementDiv7522188000000639254";
-
-const XNQSJSDP =
-  "b2b87ea3572e3371fed88307ed13593f513cb9ce83bc3cde54bc6cdbd2be8147";
-const XMIWTLD =
-  "ae94a0b6e91cc613314ca0d4694aae56fe04a9562a39ab07bd2769e2fa200e64cd5f7f18585b383d9c0b6ac6716c34ce";
-const ACTION_TYPE = "UG90ZW50aWFscw==";
-
-/**
- * sessionStorage key for the captured UTM values. Derived from the form id so
- * two different Bigin forms on the same site never share a bucket.
- */
-const UTM_STORAGE_KEY = `bigin_utm_${FORM_ID}`;
-
-/**
- * The hosted form served by Bigin. An `action`-less form posts to its own URL,
- * so this is the endpoint that accepts the submission.
- */
-const HOSTED_FORM_URL =
-  "https://us.bigin.online/org935134661/forms/2151-get-quote";
-
-/* ------------------------------------------------------------------ */
-/* Page settings — edit these directly, there are no props             */
-/* ------------------------------------------------------------------ */
-
-/** Heading shown above the fields. */
-const FORM_TITLE = "Get a Quote";
-
-/**
- * Where Zoho sends the visitor after submitting.
- *
- * "null" is what Bigin's own form sends, and it means "use whatever the form
- * is configured to do in Bigin". A custom URL here only works if that exact
- * URL is set as the redirect inside Bigin (form → Settings → after
- * submission); an unapproved URL gets ignored and Zoho redirects elsewhere.
- */
-const RETURN_URL = "null";
-
-/** Dial code selected before the visitor picks one. */
-const DEFAULT_COUNTRY_ISO = "in";
-
-/** Lead Page URL / UTM rows are filled automatically; keep them out of sight. */
-const HIDE_TRACKING_FIELDS = true;
-
-/**
- * Google reCAPTCHA v2 site key. Empty means no captcha, matching this form's
- * setup in Bigin. Turn reCAPTCHA on in Bigin first, then paste the key here.
- */
-const RECAPTCHA_SITE_KEY: string = "";
-
-/** mndFields7522188000000639254 */
-const MND_FIELDS = [
-  "Potential Name",
-  "Accounts.Account Name",
-  "Contacts.Mobile",
-  "Contacts.Email",
-  "POTENTIALCF1",
-  "POTENTIALCF3",
-  "POTENTIALCF2",
-  "Description",
-] as const;
-
-/** fldLangVal7522188000000639254 */
-const FLD_LANG_VAL: Record<(typeof MND_FIELDS)[number], string> = {
-  "Potential Name": "Name",
-  "Accounts.Account Name": "Company",
-  "Contacts.Mobile": "Mobile",
-  "Contacts.Email": "Email",
-  POTENTIALCF1: "Service Interested In?",
-  POTENTIALCF3: "Monthly/Project Budget",
-  POTENTIALCF2: "When do you want to start?",
-  Description: "Tell Us About Your Requirement",
-};
-
-/** DOM order, used to focus the first field in error (same as the original). */
-const FOCUS_ORDER = [
-  "Potential Name",
-  "Accounts.Account Name",
-  "Contacts.Mobile",
-  "Contacts.Email",
-  "POTENTIALCF1",
-  "POTENTIALCF3",
-  "POTENTIALCF2",
-  "Description",
-  "recaptcha",
-];
-
-const EMAIL_REGEX =
-  /^([A-Za-z0-9-._%'+/]+@[A-Za-z0-9.-]+.[a-zA-Z]{2,22})$/;
-
-type Errors = Record<string, string>;
-
-/* ------------------------------------------------------------------ */
-/* Field error (with the original "View More" behaviour)              */
-/* ------------------------------------------------------------------ */
-
-function FieldError({ message }: { message?: string }) {
-  const spanRef = useRef<HTMLSpanElement>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [truncated, setTruncated] = useState(false);
-
-  useLayoutEffect(() => {
-    setExpanded(false);
-    const span = spanRef.current;
-    const parent = span?.closest(".wf-field") as HTMLElement | null;
-    if (!span || !parent) {
-      setTruncated(false);
-      return;
-    }
-    setTruncated(span.scrollWidth > parent.offsetWidth);
-  }, [message]);
-
-  if (!message) return null;
-
-  const showViewMore = truncated && !expanded;
-
-  return (
-    <div className="wf-error-parent-ele">
-      <span
-        ref={spanRef}
-        className={`wf-field-error${showViewMore ? " wf-field-error-long" : ""}`}
-      >
-        {message}
-      </span>
-      {showViewMore && (
-        <span
-          className="wf-error-view-more"
-          onClick={() => setExpanded(true)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && setExpanded(true)}
-        >
-          View More
-        </span>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Component                                                          */
-/* ------------------------------------------------------------------ */
-
-export default function EnquiryPage() {
-  const formRef = useRef<HTMLFormElement>(null);
-  const phoneRef = useRef<HTMLInputElement | null>(null);
-  const dialCodeRef = useRef<HTMLInputElement>(null);
-  const zcGadRef = useRef<HTMLInputElement>(null);
-  const recaptchaRef = useRef<HTMLDivElement | null>(null);
-  const recaptchaWidgetId = useRef<number | null>(null);
-  const countryBoxRef = useRef<HTMLDivElement>(null);
-  const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
-
-  const [errors, setErrors] = useState<Errors>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [captchaVerified, setCaptchaVerified] = useState(false);
-  const [captchaReady, setCaptchaReady] = useState(false);
-  const [countryIso, setCountryIso] = useState(DEFAULT_COUNTRY_ISO);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [tracking, setTracking] = useState<TrackingValues>(EMPTY_TRACKING);
-
-  const trackingRowStyle = HIDE_TRACKING_FIELDS
-    ? ({ display: "none" } as const)
-    : undefined;
-
-  const selectedCountry: Country =
-    countries.find((c) => c.iso === countryIso) ??
-    countries.find((c) => c.iso === "in")!;
-
-  const filteredCountries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return countries;
-    return countries.filter((c) => countryRef(c).toLowerCase().includes(q));
-  }, [search]);
-
-  const setRef = useCallback(
-    (name: string) => (el: HTMLElement | null) => {
-      fieldRefs.current[name] = el;
-    },
-    []
-  );
-
-  const clearError = useCallback((name: string) => {
-    setErrors((prev) => {
-      if (!prev[name]) return prev;
-      const next = { ...prev };
-      delete next[name];
-      return next;
+  const play = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = 0;
+    v.play().catch(() => {
+      /* autoplay may be blocked until user interacts once */
     });
-  }, []);
-
-  const fieldClass = (base: string, name: string) =>
-    `${base}${errors[name] ? " wf-field-error-active" : ""}`;
-
-  /* ---------------- UTM / lead page auto-fill ---------------- */
-
-  useEffect(() => {
-    setTracking(collectTracking(UTM_STORAGE_KEY));
-    // Google Ads click id — Zoho reads it from this hidden field.
-    const gclid = new URLSearchParams(window.location.search).get("gclid");
-    if (gclid && zcGadRef.current) zcGadRef.current.value = gclid;
-  }, []);
-
-  /* ---------------- reCAPTCHA (explicit render) ---------------- */
-
-  useEffect(() => {
-    if (!RECAPTCHA_SITE_KEY) return;
-    const w = window as any;
-    if (w.grecaptcha?.render) {
-      setCaptchaReady(true);
-      return;
-    }
-    const cbName = "__biginRecaptchaOnLoad";
-    const prev = w[cbName];
-    w[cbName] = () => {
-      prev?.();
-      setCaptchaReady(true);
-    };
-    if (!document.getElementById("bigin-recaptcha-script")) {
-      const s = document.createElement("script");
-      s.id = "bigin-recaptcha-script";
-      s.src = `https://www.google.com/recaptcha/api.js?onload=${cbName}&render=explicit`;
-      s.async = true;
-      s.defer = true;
-      document.head.appendChild(s);
-    }
-  }, []);
-
-  useEffect(() => {
-    const w = window as any;
-    if (
-      !RECAPTCHA_SITE_KEY ||
-      !captchaReady ||
-      !recaptchaRef.current ||
-      recaptchaWidgetId.current !== null ||
-      !w.grecaptcha?.render
-    ) {
-      return;
-    }
-    recaptchaWidgetId.current = w.grecaptcha.render(recaptchaRef.current, {
-      sitekey: RECAPTCHA_SITE_KEY,
-      theme: "light",
-      callback: () => {
-        setCaptchaVerified(true);
-        clearError("recaptcha");
-      },
-      "expired-callback": () => setCaptchaVerified(false),
-    });
-  }, [captchaReady, clearError]);
-
-  /* ----------------------------------------------------------------
-   * Zoho's WebformScriptServlet is deliberately NOT loaded.
-   *
-   * It calls document.write(), which browsers refuse once the page has
-   * finished parsing ("Failed to execute 'write' on 'Document'"), so injecting
-   * it from an effect only produces a console error. All it contributed was
-   * IP-based dial-code detection and the zc_gad value, both handled here:
-   * defaultCountryIso covers the first, the gclid capture below the second.
-   * ---------------------------------------------------------------- */
-
-  /* ---------------- Close the country dropdown on outside click ---------------- */
-
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (
-        countryBoxRef.current &&
-        !countryBoxRef.current.contains(e.target as Node)
-      ) {
-        setDropdownOpen(false);
-        setSearch("");
-      }
-    };
-    document.addEventListener("click", onDocClick);
-    return () => document.removeEventListener("click", onDocClick);
-  }, [dropdownOpen]);
-
-  /* ---------------- Validation ---------------- */
-
-  const validate = (): Errors => {
-    const form = formRef.current;
-    const errs: Errors = {};
-    if (!form) return errs;
-
-    // checkMandatory
-    MND_FIELDS.forEach((name) => {
-      const label = FLD_LANG_VAL[name];
-
-      if (name === "Contacts.Mobile") {
-        if (!(phoneRef.current?.value ?? "").replace(/^\s+|\s+$/g, "")) {
-          errs[name] = `${label} cannot be empty`;
-        }
-        return;
-      }
-
-      const el = form.elements.namedItem(name) as
-        | HTMLInputElement
-        | HTMLSelectElement
-        | HTMLTextAreaElement
-        | null;
-      if (!el) return;
-
-      const value = (el.value || "").replace(/^\s+|\s+$/g, "");
-      if (!value) {
-        errs[name] = `${label} cannot be empty`;
-      } else if (el.nodeName === "SELECT" && el.value === "-None-") {
-        errs[name] = `${label} cannot be none.`;
-      }
-    });
-
-    // validateFields → email
-    const email = form.elements.namedItem("Contacts.Email") as
-      | HTMLInputElement
-      | null;
-    if (email?.value && !EMAIL_REGEX.test(email.value)) {
-      errs["Contacts.Email"] = `Enter valid ${FLD_LANG_VAL["Contacts.Email"]}`;
-    }
-
-    // validatePhone → digits only (rest_alpha)
-    const phone = phoneRef.current?.value ?? "";
-    if (phone && !/^[0-9a-zA-Z+.()\-;\s]+$/.test(phone)) {
-      errs["Contacts.Mobile"] = "Enter valid numbers";
-    }
-
-    // validateReCaptcha (only when a key is configured)
-    if (RECAPTCHA_SITE_KEY && !captchaVerified) {
-      errs.recaptcha =
-        "Please check the reCAPTCHA box before submitting the form.";
-    }
-
-    return errs;
   };
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    // NB: the original inline handler ran `document.charset = "UTF-8"`, which
-    // throws in modern browsers ("only has a getter"). The encoding already
-    // comes from acceptCharset on the form, so there is nothing to do here.
-    const errs = validate();
-    setErrors(errs);
-
-    const errorKeys = Object.keys(errs);
-    if (errorKeys.length) {
-      e.preventDefault();
-      const first = FOCUS_ORDER.find((k) => errs[k]) ?? errorKeys[0];
-      window.setTimeout(() => fieldRefs.current[first]?.focus(), 0);
-      return;
-    }
-
-    // Prefix the hidden Contacts.Mobile field with the selected dial code.
-    if (dialCodeRef.current) {
-      dialCodeRef.current.value = phoneRef.current?.value
-        ? selectedCountry.dial + phoneRef.current.value
-        : "";
-    }
-
-    setSubmitting(true); // mirrors formsubmit.disabled = true
-  };
-
-  /* ---------------- Render ---------------- */
+  const pause = () => videoRef.current?.pause();
 
   return (
     <div
-      className="wf-parent"
-      id={FORM_PARENT_ID}
-      style={{ backgroundColor: "#EAEEF2" }}
+      className="service-row"
+      onMouseEnter={play}
+      onMouseLeave={pause}
+      onFocus={() => videoRef.current?.play().catch(() => {})}
+      onBlur={pause}
     >
-      <style dangerouslySetInnerHTML={{ __html: BIGIN_FORM_CSS }} />
-      <div className="wf-wrapper" id={FORM_DIV_ID}>
-        <form
-          ref={formRef}
-          id={FORM_ID}
-          name={FORM_ID}
-          className="wf-form-component"
-          data-ux-form-alignment="top"
-          style={{ fontFamily: "Arial", position: "relative", fontSize: "15px" }}
-          method="POST"
-          action={HOSTED_FORM_URL}
-          encType="multipart/form-data"
-          acceptCharset="UTF-8"
-          onSubmit={handleSubmit}
-        >
-          {/* Do not remove this code. */}
-          <input type="text" style={{ display: "none" }} name="xnQsjsdp" defaultValue={XNQSJSDP} readOnly />
-          <input ref={zcGadRef} type="hidden" name="zc_gad" id="zc_gad" defaultValue="" />
-          <input type="text" style={{ display: "none" }} name="xmIwtLD" defaultValue={XMIWTLD} readOnly />
-          <input type="text" style={{ display: "none" }} name="actionType" defaultValue={ACTION_TYPE} readOnly />
-          <input type="text" style={{ display: "none" }} name="returnURL" defaultValue={RETURN_URL} readOnly />
-
-          <div className="wf-header">{FORM_TITLE}</div>
-
-          <div id={ELEMENT_DIV_ID} className="wf-form-wrapper">
-            {/* Name */}
-            <div className="wf-row">
-              <div className="wf-label">Name</div>
-              <div className={fieldClass("wf-field wf-field-mandatory", "Potential Name")}>
-                <div className="wf-field-inner">
-                  <input
-                    ref={setRef("Potential Name")}
-                    name="Potential Name"
-                    maxLength={120}
-                    type="text"
-                    className="wf-field-item wf-field-input"
-                    onInput={() => clearError("Potential Name")}
-                  />
-                </div>
-                <FieldError message={errors["Potential Name"]} />
-              </div>
-            </div>
-
-            {/* Company Name */}
-            <div className="wf-row">
-              <div className="wf-label">Company</div>
-              <div className={fieldClass("wf-field wf-field-mandatory", "Accounts.Account Name")}>
-                <div className="wf-field-inner">
-                  <input
-                    ref={setRef("Accounts.Account Name")}
-                    name="Accounts.Account Name"
-                    maxLength={200}
-                    type="text"
-                    className="wf-field-item wf-field-input"
-                    onInput={() => clearError("Accounts.Account Name")}
-                  />
-                </div>
-                <FieldError message={errors["Accounts.Account Name"]} />
-              </div>
-            </div>
-
-            {/* Mobile (dial-code picker + number) */}
-            <div className="wf-row">
-              <div className="wf-label">Mobile</div>
-              <div
-                className={fieldClass(
-                  "wf-field wf-field-mandatory ux-pick-mixed multiple-fields-div flex-1-5",
-                  "Contacts.Mobile"
-                )}
-              >
-                <div className="wf-field-inner">
-                  <div
-                    ref={countryBoxRef}
-                    id="phContacts___Mobile"
-                    className={`multiselect wf-field-dropdown field-1 dropdown-with-search icon-with-text-dropdown single-select-drp${
-                      dropdownOpen ? " dropbox-active" : ""
-                    }`}
-                  >
-                    <div
-                      className="selected-options hide-opt-list wf-field-item selected-options-field"
-                      style={{ display: "none" }}
-                    />
-                    <div
-                      className={`dropdown flex-center-v dropdown-contents${
-                        dropdownOpen ? " open" : ""
-                      }`}
-                      onClick={() => {
-                        clearError("Contacts.Mobile");
-                        setDropdownOpen((o) => !o);
-                        setSearch("");
-                      }}
-                    >
-                      <span className="mR10 f22 content-display-area">
-                        {selectedCountry.dial}
-                      </span>
-                      <ul
-                        className={`dropdown-menu${dropdownOpen ? " dropdown-focus" : ""}`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="text"
-                          placeholder="Search"
-                          className="dropdown-search-input"
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <div className="dropdown-items-wrapper">
-                          {filteredCountries.map((c) => (
-                            <div
-                              key={`${c.iso}-${c.ds}`}
-                              className="option"
-                              data-selected={c.iso === selectedCountry.iso ? "true" : "false"}
-                              onClick={() => {
-                                setCountryIso(c.iso);
-                                setDropdownOpen(false);
-                                setSearch("");
-                              }}
-                            >
-                              <span className="icon-text-dropdown" data-value={countryRef(c)}>
-                                <span style={{ marginRight: 10 }}>{c.ds}</span>
-                                <span style={{ marginRight: 10 }}>{c.dial}</span>
-                              </span>
-                            </div>
-                          ))}
-                          {filteredCountries.length === 0 && (
-                            <div className="option no-results">No options found</div>
-                          )}
-                        </div>
-                      </ul>
-                    </div>
-                  </div>
-
-                  <div className="field-2">
-                    <div>
-                      <input
-                        ref={(el) => {
-                          phoneRef.current = el;
-                          fieldRefs.current["Contacts.Mobile"] = el;
-                        }}
-                        maxLength={30}
-                        type="text"
-                        inputMode="tel"
-                        className="wf-field-item wf-field-input"
-                        onInput={() => clearError("Contacts.Mobile")}
-                      />
-                      <input
-                        ref={dialCodeRef}
-                        name="Contacts.Mobile"
-                        maxLength={30}
-                        type="text"
-                        style={{ display: "none" }}
-                        readOnly
-                      />
-                    </div>
-                  </div>
-                </div>
-                <FieldError message={errors["Contacts.Mobile"]} />
-              </div>
-            </div>
-
-            {/* Email */}
-            <div className="wf-row">
-              <div className="wf-label">Email</div>
-              <div className={fieldClass("wf-field wf-field-mandatory", "Contacts.Email")}>
-                <div className="wf-field-inner">
-                  <input
-                    ref={setRef("Contacts.Email")}
-                    name="Contacts.Email"
-                    maxLength={100}
-                    type="text"
-                    className="wf-field-item wf-field-input"
-                    onInput={() => clearError("Contacts.Email")}
-                  />
-                </div>
-                <FieldError message={errors["Contacts.Email"]} />
-              </div>
-            </div>
-
-            {/* Service Interested In? */}
-            <div className="wf-row">
-              <div className="wf-label">Service Interested In?</div>
-              <div className={fieldClass("wf-field wf-field-mandatory", "POTENTIALCF1")}>
-                <div className="wf-field-inner dropdown-contents">
-                  <select
-                    ref={setRef("POTENTIALCF1")}
-                    name="POTENTIALCF1"
-                    className="wf-field-item wf-field-dropdown"
-                    data-wform-field="select"
-                    defaultValue="-None-"
-                    onChange={() => clearError("POTENTIALCF1")}
-                  >
-                    <option value="-None-">-None-</option>
-                    <option value="Digital Marketing">Digital Marketing</option>
-                    <option value="SEO">SEO</option>
-                    <option value="Website Development">Website Development</option>
-                    <option value="Video Production">Video Production</option>
-                    <option value="Influencer Marketing">Influencer Marketing</option>
-                    <option value="AI Videos">AI Videos</option>
-                  </select>
-                </div>
-                <FieldError message={errors["POTENTIALCF1"]} />
-              </div>
-            </div>
-
-            {/* Monthly/Project Budget */}
-            <div className="wf-row">
-              <div className="wf-label">Monthly/Project Budget</div>
-              <div
-                className={fieldClass("wf-field wf-field-mandatory", "POTENTIALCF3")}
-              >
-                <div className="wf-field-inner dropdown-contents">
-                  <select
-                    ref={setRef("POTENTIALCF3")}
-                    name="POTENTIALCF3"
-                    className="wf-field-item wf-field-dropdown"
-                    data-wform-field="select"
-                    defaultValue="-None-"
-                    onChange={() => clearError("POTENTIALCF3")}
-                  >
-                    <option value="-None-">-None-</option>
-                    <option value="Below ₹25K">Below ₹25K</option>
-                    <option value="₹25K–₹50K">₹25K–₹50K</option>
-                    <option value="₹50K–₹1L">₹50K–₹1L</option>
-                    <option value="₹1L–₹3L">₹1L–₹3L</option>
-                    <option value="₹3L+">₹3L+</option>
-                  </select>
-                </div>
-                <FieldError message={errors["POTENTIALCF3"]} />
-              </div>
-            </div>
-
-            {/* When do you want to start? */}
-            <div className="wf-row">
-              <div className="wf-label">When do you want to start?</div>
-              <div className={fieldClass("wf-field wf-field-mandatory", "POTENTIALCF2")}>
-                <div className="wf-field-inner dropdown-contents">
-                  <select
-                    ref={setRef("POTENTIALCF2")}
-                    name="POTENTIALCF2"
-                    className="wf-field-item wf-field-dropdown"
-                    data-wform-field="select"
-                    defaultValue="-None-"
-                    onChange={() => clearError("POTENTIALCF2")}
-                  >
-                    <option value="-None-">-None-</option>
-                    <option value="Immediately">Immediately</option>
-                    <option value="Within 30 days">Within 30 days</option>
-                    <option value="1–3 months">1–3 months</option>
-                    <option value="Just Exploring">Just Exploring</option>
-                  </select>
-                </div>
-                <FieldError message={errors["POTENTIALCF2"]} />
-              </div>
-            </div>
-
-            {/* Tell Us About Your Requirement */}
-            <div className="wf-row">
-              <div className="wf-label">Tell Us About Your Requirement</div>
-              <div className={fieldClass("wf-field wf-field-mandatory", "Description")}>
-                <div className="wf-field-inner">
-                  <textarea
-                    ref={setRef("Description")}
-                    name="Description"
-                    maxLength={32000}
-                    className="wf-field-item wf-field-input wf-text-area-input"
-                    onInput={() => clearError("Description")}
-                  />
-                </div>
-                <FieldError message={errors["Description"]} />
-              </div>
-            </div>
-
-            {/* Lead Page URL – auto-filled from the current page URL */}
-            <div className="wf-row" style={trackingRowStyle}>
-              <div className="wf-label">Lead Page URL</div>
-              <div className={fieldClass("wf-field", "POTENTIALCF4")}>
-                <div className="wf-field-inner">
-                  <input
-                    ref={setRef("POTENTIALCF4")}
-                    name="POTENTIALCF4"
-                    maxLength={255}
-                    type="text"
-                    className="wf-field-item wf-field-input"
-                    value={tracking.leadPageUrl}
-                    onChange={(e) => {
-                      clearError("POTENTIALCF4");
-                      setTracking((t) => ({ ...t, leadPageUrl: e.target.value }));
-                    }}
-                  />
-                </div>
-                <FieldError message={errors["POTENTIALCF4"]} />
-              </div>
-            </div>
-
-            {/* UTM Campaign – auto-filled from ?utm_campaign */}
-            <div className="wf-row" style={trackingRowStyle}>
-              <div className="wf-label">UTM Campaign</div>
-              <div className={fieldClass("wf-field", "POTENTIALCF7")}>
-                <div className="wf-field-inner">
-                  <input
-                    ref={setRef("POTENTIALCF7")}
-                    name="POTENTIALCF7"
-                    maxLength={255}
-                    type="text"
-                    className="wf-field-item wf-field-input"
-                    value={tracking.utmCampaign}
-                    onChange={(e) => {
-                      clearError("POTENTIALCF7");
-                      setTracking((t) => ({ ...t, utmCampaign: e.target.value }));
-                    }}
-                  />
-                </div>
-                <FieldError message={errors["POTENTIALCF7"]} />
-              </div>
-            </div>
-
-            {/* UTM Source – auto-filled from ?utm_source (or ad click id / referrer) */}
-            <div className="wf-row" style={trackingRowStyle}>
-              <div className="wf-label">UTM Source</div>
-              <div className={fieldClass("wf-field", "POTENTIALCF5")}>
-                <div className="wf-field-inner">
-                  <input
-                    ref={setRef("POTENTIALCF5")}
-                    name="POTENTIALCF5"
-                    maxLength={255}
-                    type="text"
-                    className="wf-field-item wf-field-input"
-                    value={tracking.utmSource}
-                    onChange={(e) => {
-                      clearError("POTENTIALCF5");
-                      setTracking((t) => ({ ...t, utmSource: e.target.value }));
-                    }}
-                  />
-                </div>
-                <FieldError message={errors["POTENTIALCF5"]} />
-              </div>
-            </div>
-
-            {/* UTM Content – auto-filled from ?utm_content */}
-            <div className="wf-row" style={trackingRowStyle}>
-              <div className="wf-label">UTM Content</div>
-              <div className={fieldClass("wf-field", "POTENTIALCF6")}>
-                <div className="wf-field-inner">
-                  <input
-                    ref={setRef("POTENTIALCF6")}
-                    name="POTENTIALCF6"
-                    maxLength={255}
-                    type="text"
-                    className="wf-field-item wf-field-input"
-                    value={tracking.utmContent}
-                    onChange={(e) => {
-                      clearError("POTENTIALCF6");
-                      setTracking((t) => ({ ...t, utmContent: e.target.value }));
-                    }}
-                  />
-                </div>
-                <FieldError message={errors["POTENTIALCF6"]} />
-              </div>
-            </div>
-
-            {/* reCAPTCHA – rendered only when a site key is passed */}
-            {RECAPTCHA_SITE_KEY && (
-              <div className="wf-row" data-ux-field-appearance="recaptcha">
-                <div className="wf-label" />
-                <div className={fieldClass("wf-field", "recaptcha")}>
-                  <div className="wf-field-inner">
-                    <div
-                      className="g-recaptcha"
-                      id="recap7522188000000639254"
-                      ref={(el) => {
-                        recaptchaRef.current = el;
-                        fieldRefs.current["recaptcha"] = el;
-                      }}
-                    />
-                  </div>
-                  <FieldError message={errors["recaptcha"]} />
-                </div>
-              </div>
-            )}
-
-            {/* Hidden: Sub-Pipeline */}
-            <div className="wf-row" style={{ display: "none" }}>
-              <div className="wf-label">Sub-Pipeline</div>
-              <div className="wf-field wf-field-mandatory">
-                <div className="wf-field-inner dropdown-contents">
-                  <select
-                    name="Pipeline"
-                    className="wf-field-item wf-field-dropdown"
-                    data-wform-field="select"
-                    defaultValue="Sales Pipeline Standard 2"
-                  >
-                    <option value="Sales Pipeline Standard 2">
-                      Sales Pipeline Standard 2
-                    </option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Hidden: Stage */}
-            <div className="wf-row" style={{ display: "none" }}>
-              <div className="wf-label">Stage</div>
-              <div className="wf-field wf-field-mandatory">
-                <div className="wf-field-inner dropdown-contents">
-                  <select
-                    name="Stage"
-                    className="wf-field-item wf-field-dropdown"
-                    data-wform-field="select"
-                    defaultValue="Qualification"
-                  >
-                    <option value="Qualification">Qualification</option>
-                    <option value="Needs Analysis">Needs Analysis</option>
-                    <option value="Proposal/Price Quote">Proposal/Price Quote</option>
-                    <option value="Negotiation/Review">Negotiation/Review</option>
-                    <option value="Closed Won">Closed Won</option>
-                    <option value="Closed Lost">Closed Lost</option>
-                    <option value="Junk">Junk</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Hidden: Lead Source */}
-            <div className="wf-row" style={{ display: "none" }}>
-              <div className="wf-label">Lead Source</div>
-              <div className="wf-field">
-                <div className="wf-field-inner dropdown-contents">
-                  <select
-                    name="Lead Source"
-                    className="wf-field-item wf-field-dropdown"
-                    data-wform-field="select"
-                    defaultValue="Official Website"
-                  >
-                    <option value="-None-">-None-</option>
-                    <option value="Advertisement">Advertisement</option>
-                    <option value="Cold Call">Cold Call</option>
-                    <option value="Employee Referral">Employee Referral</option>
-                    <option value="External Referral">External Referral</option>
-                    <option value="Online Store">Online Store</option>
-                    <option value="Partner">Partner</option>
-                    <option value="Public Relations">Public Relations</option>
-                    <option value="Sales Email Alias">Sales Email Alias</option>
-                    <option value="Seminar Partner">Seminar Partner</option>
-                    <option value="Internal Seminar">Internal Seminar</option>
-                    <option value="Trade Show">Trade Show</option>
-                    <option value="Web Download">Web Download</option>
-                    <option value="Web Research">Web Research</option>
-                    <option value="Chat">Chat</option>
-                    <option value="Google Ads">Google Ads</option>
-                    <option value="WhatsApp Campaign">WhatsApp Campaign</option>
-                    <option value="Meta Ads">Meta Ads</option>
-                    <option value="Official Website">Official Website</option>
-                    <option value="WhatsApp Organic">WhatsApp Organic</option>
-                    <option value="WHATSAPP - Mindstory Digital Partner">
-                      WHATSAPP - Mindstory Digital Partner
-                    </option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="wform-btn-wrap" data-ux-pos="left">
-              <input
-                id="formsubmit"
-                type="submit"
-                className="wf-btn"
-                data-ux-btn-type="default"
-                style={{
-                  backgroundColor: "#1980d8",
-                  color: "#fff",
-                  border: "1px solid #1980d8",
-                  width: "auto",
-                }}
-                value="Submit"
-                disabled={submitting}
-              />
-            </div>
-          </div>
-        </form>
-      </div>
+      <video className="service-video" ref={videoRef} muted loop playsInline preload="none">
+        <source src={video} type="video/webm" />
+      </video>
+      <div className="service-scrim"></div>
+      <span className="tc">{tc}</span>
+      <h4>{title}</h4>
+      <p>{desc}</p>
+      <span className="arrow">↗</span>
     </div>
   );
+};
+
+/* ---------- Zoho Bigin hosted form ----------
+   The iframe is only rendered once the tracking effect has run, so the
+   campaign parameters are baked into the very first request. Rendering
+   it earlier and then changing `src` would load the form twice and
+   throw away anything the visitor had already typed. */
+const BiginForm: React.FC<{ tracking: TrackingData; ready: boolean }> = ({ tracking, ready }) => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  /* Built once per tracking payload — the iframe never remounts on scroll */
+  const src = useMemo(() => {
+    if (!PREFILL_TRACKING) return BIGIN_FORM_SRC;
+
+    const extra = new URLSearchParams();
+    if (tracking.leadPageUrl) extra.set("POTENTIALCF4", tracking.leadPageUrl);
+    if (tracking.utmSource) extra.set("POTENTIALCF5", tracking.utmSource);
+    if (tracking.utmContent) extra.set("POTENTIALCF6", tracking.utmContent);
+    if (tracking.utmCampaign) extra.set("POTENTIALCF7", tracking.utmCampaign);
+
+    const qs = extra.toString();
+    if (!qs) return BIGIN_FORM_SRC;
+
+    return `${BIGIN_FORM_SRC}${BIGIN_FORM_SRC.includes("?") ? "&" : "?"}${qs}`;
+  }, [tracking]);
+
+  const height = isMobile ? BIGIN_FORM_HEIGHT_MOBILE : BIGIN_FORM_HEIGHT;
+
+  return (
+    <div className="bigin-form" id="enquire">
+      {ready ? (
+        <iframe
+          src={src}
+          title="Enquiry form"
+          style={{ width: "100%", height, border: 0, display: "block" }}
+          scrolling="no"
+        />
+      ) : (
+        /* reserves the same space so the panel does not jump on load */
+        <div style={{ height }} aria-hidden="true" />
+      )}
+    </div>
+  );
+};
+
+/* =========================================================
+   TRACKING — UTM, click IDs and referrer attribution
+   ---------------------------------------------------------
+   Rules this follows:
+
+   1. A visit that arrives with ANY utm_* or ad click id starts
+      a NEW touch, and the whole set is replaced. Merging a new
+      utm_source onto an old utm_medium is how campaign reports
+      end up lying, so we never do it.
+   2. A visit with no campaign data keeps whatever the session
+      already had — browsing around the site does not wipe the
+      original attribution.
+   3. When there is no utm_source at all we infer source/medium
+      from the click id or the referring host, instead of
+      dumping everything into "direct".
+   4. First touch is kept in localStorage for 90 days, so a lead
+      who found you on Google in March and enquired in May still
+      credits Google.
+   5. Every value is clipped to 255 characters — that is the max
+      length of the single-line Bigin fields, and anything longer
+      risks the record being rejected.
+   ========================================================= */
+const TRACKING_KEY = "f21_tracking";
+const FIRST_TOUCH_KEY = "f21_first_touch";
+const FIRST_TOUCH_TTL = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+const UTM_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+] as const;
+
+const CLICK_ID_KEYS = [
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "fbclid",
+  "msclkid",
+  "ttclid",
+] as const;
+
+const SEARCH_HOSTS = [
+  "google.",
+  "bing.",
+  "yahoo.",
+  "duckduckgo.",
+  "ecosia.",
+  "yandex.",
+  "baidu.",
+  "brave.",
+];
+
+const SOCIAL_HOSTS = [
+  "facebook.",
+  "instagram.",
+  "linkedin.",
+  "youtube.",
+  "pinterest.",
+  "threads.",
+  "twitter.",
+  "x.com",
+  "t.co",
+  "whatsapp.",
+  "reddit.",
+  "snapchat.",
+  "tiktok.",
+];
+
+interface TrackingData {
+  leadPageUrl: string;
+  landingPageUrl: string;
+  referrer: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmContent: string;
+  utmTerm: string;
+  gclid: string;
+  fbclid: string;
+  msclkid: string;
+  firstTouchSource: string;
+  firstTouchMedium: string;
+  firstTouchCampaign: string;
+  firstTouchDate: string;
 }
+
+const EMPTY_TRACKING: TrackingData = {
+  leadPageUrl: "",
+  landingPageUrl: "",
+  referrer: "",
+  utmSource: "",
+  utmMedium: "",
+  utmCampaign: "",
+  utmContent: "",
+  utmTerm: "",
+  gclid: "",
+  fbclid: "",
+  msclkid: "",
+  firstTouchSource: "",
+  firstTouchMedium: "",
+  firstTouchCampaign: "",
+  firstTouchDate: "",
+};
+
+/* Bigin single-line fields are capped at 255 characters */
+const clip = (value: string | null | undefined, max = 255) =>
+  (value ?? "").trim().slice(0, max);
+
+const readStore = (store: Storage, key: string): Record<string, unknown> | null => {
+  try {
+    const raw = store.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeStore = (store: Storage, key: string, value: unknown) => {
+  try {
+    store.setItem(key, JSON.stringify(value));
+  } catch {
+    /* private mode / storage full — tracking is best effort */
+  }
+};
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
+const hostMatches = (host: string, list: string[]) =>
+  list.some((entry) => host === entry || host.includes(entry));
+
+/* Work out source/medium when the link had no utm_source on it */
+const inferSourceMedium = (params: URLSearchParams, referrer: string) => {
+  if (params.get("gclid") || params.get("gbraid") || params.get("wbraid")) {
+    return { source: "google", medium: "cpc" };
+  }
+  if (params.get("msclkid")) return { source: "bing", medium: "cpc" };
+  if (params.get("fbclid")) return { source: "facebook", medium: "social" };
+  if (params.get("ttclid")) return { source: "tiktok", medium: "social" };
+
+  const host = hostOf(referrer);
+  /* no referrer, or an internal link = someone who typed the URL,
+     used a bookmark, or came from an app with no referrer */
+  if (!host || host === hostOf(window.location.href)) {
+    return { source: "direct", medium: "none" };
+  }
+  if (hostMatches(host, SEARCH_HOSTS)) return { source: host, medium: "organic" };
+  if (hostMatches(host, SOCIAL_HOSTS)) return { source: host, medium: "social" };
+  return { source: host, medium: "referral" };
+};
+
+/* Build a complete, self-consistent touch from the current URL */
+const buildTouch = (params: URLSearchParams, referrer: string): TrackingData => {
+  const inferred = inferSourceMedium(params, referrer);
+  const href = clip(window.location.href);
+
+  return {
+    ...EMPTY_TRACKING,
+    leadPageUrl: href,
+    landingPageUrl: href,
+    referrer: clip(referrer),
+    utmSource: clip(params.get("utm_source") || inferred.source),
+    utmMedium: clip(params.get("utm_medium") || inferred.medium),
+    utmCampaign: clip(params.get("utm_campaign")),
+    utmContent: clip(params.get("utm_content")),
+    utmTerm: clip(params.get("utm_term")),
+    gclid: clip(
+      params.get("gclid") || params.get("gbraid") || params.get("wbraid")
+    ),
+    fbclid: clip(params.get("fbclid")),
+    msclkid: clip(params.get("msclkid")),
+  };
+};
+
+/* ============================ PAGE ============================ */
+export default function Home() {
+  const [scrolled, setScrolled] = useState(false);
+
+  // campaign tracking captured from the URL
+  const [tracking, setTracking] = useState<TrackingData>(EMPTY_TRACKING);
+
+  // the iframe waits for this so the form loads exactly once, with params
+  const [trackingReady, setTrackingReady] = useState(false);
+
+  /* header scroll state */
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  /* ---------------------------------------------------------
+     Capture campaign attribution.
+
+     Arriving with utm_* or a click id = new touch, replaces the
+     stored set completely. Arriving with nothing = keep what the
+     session already holds, so internal navigation never erases
+     the campaign that actually brought the visitor in.
+     --------------------------------------------------------- */
+  useEffect(() => {
+    const href = clip(window.location.href);
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+
+      const isNewTouch = [...UTM_KEYS, ...CLICK_ID_KEYS].some(
+        (key) => (params.get(key) ?? "").trim() !== ""
+      );
+
+      const saved = readStore(window.sessionStorage, TRACKING_KEY) as
+        | Partial<TrackingData>
+        | null;
+
+      const data: TrackingData =
+        isNewTouch || !saved
+          ? buildTouch(params, document.referrer)
+          : { ...EMPTY_TRACKING, ...saved };
+
+      /* the enquiry may be sent from a different page than the one
+         they landed on — record both */
+      data.leadPageUrl = href;
+      if (!data.landingPageUrl) data.landingPageUrl = href;
+
+      /* first touch: written once, then left alone for 90 days */
+      const firstRaw = readStore(window.localStorage, FIRST_TOUCH_KEY) as
+        | { source?: string; medium?: string; campaign?: string; savedAt?: number }
+        | null;
+
+      const firstIsFresh =
+        firstRaw &&
+        typeof firstRaw.savedAt === "number" &&
+        Date.now() - firstRaw.savedAt < FIRST_TOUCH_TTL;
+
+      if (firstIsFresh && firstRaw) {
+        data.firstTouchSource = clip(firstRaw.source);
+        data.firstTouchMedium = clip(firstRaw.medium);
+        data.firstTouchCampaign = clip(firstRaw.campaign);
+        data.firstTouchDate = new Date(firstRaw.savedAt as number)
+          .toISOString()
+          .slice(0, 10);
+      } else {
+        const savedAt = Date.now();
+        writeStore(window.localStorage, FIRST_TOUCH_KEY, {
+          source: data.utmSource,
+          medium: data.utmMedium,
+          campaign: data.utmCampaign,
+          savedAt,
+        });
+        data.firstTouchSource = data.utmSource;
+        data.firstTouchMedium = data.utmMedium;
+        data.firstTouchCampaign = data.utmCampaign;
+        data.firstTouchDate = new Date(savedAt).toISOString().slice(0, 10);
+      }
+
+      writeStore(window.sessionStorage, TRACKING_KEY, data);
+      setTracking(data);
+    } catch (err) {
+      console.error("Tracking capture failed:", err);
+      /* never let tracking break the form — fall back to a usable set */
+      setTracking({
+        ...EMPTY_TRACKING,
+        leadPageUrl: href,
+        landingPageUrl: href,
+        utmSource: "direct",
+        utmMedium: "none",
+      });
+    } finally {
+      /* the form must load even if attribution failed entirely */
+      setTrackingReady(true);
+    }
+  }, []);
+
+  /* scroll reveal animations */
+  useEffect(() => {
+    const revealTargets = document.querySelectorAll(
+      ".reveal, .reveal-left, .reveal-right, .reveal-scale, .stagger"
+    );
+
+    if ("IntersectionObserver" in window) {
+      const revealObserver = new IntersectionObserver(
+        (entries, obs) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("visible");
+              obs.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.15, rootMargin: "0px 0px -60px 0px" }
+      );
+
+      revealTargets.forEach((el) => revealObserver.observe(el));
+      return () => revealObserver.disconnect();
+    } else {
+      revealTargets.forEach((el) => el.classList.add("visible"));
+    }
+  }, []);
+
+  return (
+    <>
+      <style>{css}</style>
+
+      {/* ===== HEADER ===== */}
+      <header id="siteHeader" className={scrolled ? "scrolled" : ""}>
+        <a href="#top" className="logo">
+          <img src="/logo/2151-logo.png" alt="21Fiftyone logo" />
+        </a>
+        <nav>
+          <ul>
+            <li><a href="#top">Home</a></li>
+            <li><a href="#about">About</a></li>
+            <li><a href="#services">Services</a></li>
+            <li><a href="#process">Studio</a></li>
+            <li><a href="#contact">Contact</a></li>
+          </ul>
+        </nav>
+        <div className="nav-right">
+          <a href="#enquire" className="btn-ghost">
+            Enquire Now
+          </a>
+        </div>
+        <a href="#enquire" className="menu-toggle" aria-label="Go to enquiry form">
+          <span></span><span></span><span></span>
+        </a>
+      </header>
+
+      {/* ===== HERO + BANNER FORM ===== */}
+      <section className="hero" id="top">
+        <video
+          className="hero-video"
+          autoPlay
+          muted
+          loop
+          playsInline
+          poster="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1600&auto=format&fit=crop"
+        >
+          <source src="/videos/banner/7011667_Film_Filming_1280x720.webm" type="video/webm" />
+        </video>
+        <div className="hero-scrim"></div>
+        <div className="container hero-grid">
+          <div className="hero-copy">
+            <span className="eyebrow">AI Production House · Luxury &amp; Editorial</span>
+            <h1>
+              We Make <span>Culture.</span>
+            </h1>
+            <p>
+              Video production company in Calicut crafting cinematic brand films, commercials,
+              reels and digital stories that connect with people and leave a lasting impact.
+            </p>
+            <div className="hero-actions">
+              <a href="#services" className="btn-solid">View Our Work</a>
+              <a href="#contact" className="btn-ghost">Connect With The Studio</a>
+            </div>
+            <div className="reel-tags">
+              <div><span>✦</span>Film Production</div>
+              <div><span>✦</span>Commercial / Ad</div>
+              <div><span>✦</span>Corporate Film</div>
+              <div><span>✦</span>Event / Experience</div>
+              <div><span>✦</span>AI Content</div>
+              <div><span>✦</span>Photography</div>
+            </div>
+          </div>
+
+          {/* ===== ENQUIRY FORM (hosted by Zoho Bigin) ===== */}
+          <div className="form-panel">
+            <h3>Start Your Story</h3>
+            <p className="sub">
+              Tell us about your project — our studio will call you back within 24 hours.
+            </p>
+            <BiginForm tracking={tracking} ready={trackingReady} />
+            <p className="form-note">No spam. Just a conversation about your story.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== ABOUT (IMAGE SECTION) ===== */}
+      <section className="about" id="about">
+        <div className="container about-grid">
+          <div className="about-frame reveal-left">
+            <img src="/image/about-3.webp" alt="21Fiftyone behind the scenes on set" />
+            <div className="corner tl"></div>
+            <div className="corner br"></div>
+            <p className="about-tag">
+              "We don't just create visuals.<br />We craft stories that stay."
+            </p>
+          </div>
+          <div className="reveal-right">
+            <span className="eyebrow">The Origin</span>
+            <h2>We Make Stories.</h2>
+            <p>
+              As a leading video production company in Calicut, we believe every story has the
+              power to inspire, connect, and make an impact. We combine cinematic creativity with
+              modern technology to create films and brand visuals that feel authentic, engaging,
+              and memorable.
+            </p>
+            <p>
+              From concept to completion, every project is crafted with passion, precision, and
+              purpose — transforming ideas into visual experiences that leave a lasting impression.
+            </p>
+            <div className="stat-row">
+              <div className="stat"><b>100+</b><span>Projects</span></div>
+              <div className="stat"><b>25+</b><span>Brands</span></div>
+              <div className="stat"><b>10+</b><span>Studio</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== SERVICES (HOVER = VIDEO BACKGROUND) ===== */}
+      <section className="services" id="services">
+        <div className="container">
+          <div className="section-head reveal">
+            <div>
+              <span className="eyebrow">What We Do</span>
+              <h2>Our Core Services</h2>
+            </div>
+            <p>
+              Blending imagination, emotion and precision — to create stories that feel as powerful
+              as they look. Hover a service to preview.
+            </p>
+          </div>
+
+          <div className="service-list stagger">
+            {SERVICES.map((s) => (
+              <ServiceRow key={s.tc} {...s} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ===== PROCESS ===== */}
+      <section className="process" id="process">
+        <div className="container">
+          <div className="reveal">
+            <span className="eyebrow">How We Work</span>
+            <h2 style={{ fontSize: "clamp(32px,4vw,50px)", fontStyle: "italic", marginTop: "14px" }}>
+              The Process
+            </h2>
+          </div>
+          <div className="process-grid stagger">
+            <div className="process-step">
+              <div className="tc">01 · Conceive</div>
+              <h4>Understand</h4>
+              <p>
+                We understand your brand, audience, message, budget and final use case before
+                suggesting a direction.
+              </p>
+            </div>
+            <div className="process-step">
+              <div className="tc">02 · Design</div>
+              <h4>Shape</h4>
+              <p>
+                We shape the idea into a visual plan with scripts, mood references, shot flow and
+                storyboards.
+              </p>
+            </div>
+            <div className="process-step">
+              <div className="tc">03 · Produce</div>
+              <h4>Shoot</h4>
+              <p>
+                We handle the shoot with the right crew, equipment, lighting and on-location
+                coordination.
+              </p>
+            </div>
+            <div className="process-step">
+              <div className="tc">04 · Deliver</div>
+              <h4>Refine</h4>
+              <p>
+                We edit, grade and export final videos in formats suited for web, ads, reels and
+                campaigns.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== CTA ===== */}
+      <section className="cta-strip" id="contact">
+        <div className="container reveal-scale">
+          <span className="eyebrow">Studio 2025 · Based Worldwide</span>
+          <h2>
+            Ready to Break<br />the Mold?
+          </h2>
+          <p>
+            Let's collaborate on your next masterpiece. Our studio doors are always open for the
+            brave.
+          </p>
+          <div className="cta-actions">
+            <a href="#enquire" className="btn-solid">
+              Connect With The Studio
+            </a>
+            <a href="#services" className="btn-ghost">View Our Work</a>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== FOOTER ===== */}
+      <footer>
+        <div className="container reveal">
+          <div className="footer-grid">
+            <div className="footer-brand">
+              <a href="#top" className="logo">
+                <img src="/logo/2151-logo.png" alt="21Fiftyone logo" />
+              </a>
+              <p>Elevating brands through the art of digital alchemy and technical precision.</p>
+              <a className="mail" href="mailto:hello@21fiftyone.com">hello@21fiftyone.com</a>
+            </div>
+            <div>
+              <h5>Studio</h5>
+              <ul>
+                <li><a href="#about">About</a></li>
+                <li><a href="#process">Studio</a></li>
+                <li><a href="#">Careers</a></li>
+                <li><a href="#contact">Contact</a></li>
+              </ul>
+            </div>
+            <div>
+              <h5>Services</h5>
+              <ul>
+                <li><a href="#services">Visual Production</a></li>
+                <li><a href="#services">Movie Production</a></li>
+                <li><a href="#services">Corporate Films</a></li>
+                <li><a href="#services">AI Production</a></li>
+              </ul>
+            </div>
+            <div>
+              <h5>Policies</h5>
+              <ul>
+                <li><a href="#">Privacy Policy</a></li>
+                <li><a href="#">Terms &amp; Conditions</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="footer-bottom">
+            <span>© 2026 21FIFTYONE. All rights reserved. Thrissur / Kozhikode, IN — Est. 2006</span>
+            <div className="socials">
+              <a href="https://www.instagram.com/21fiftyone" target="_blank" rel="noopener noreferrer">Instagram</a>
+              <a href="https://www.facebook.com/share/1Aw4MkQKzk/" target="_blank" rel="noopener noreferrer">Facebook</a>
+              <a href="https://www.behance.net/mindstorycreative" target="_blank" rel="noopener noreferrer">Behance</a>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {/* ===== FLOATING ENQUIRE BUTTON ===== */}
+      <a href="#enquire" className="float-btn">
+        <span className="dot"></span> Enquire Now
+      </a>
+
+    </>
+  );
+}
+
+/* =========================================================
+   FULL ORIGINAL CSS — unchanged
+   ========================================================= */
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500;1,600&family=Jost:wght@300;400;500;600;700&display=swap');
+
+:root{
+  --bg:#ffffff;
+  --bg-alt:#f6f6f6;
+  --card:#ffffff;
+  --line: rgba(0,0,0,0.10);
+  --ivory:#121212;
+  --muted:#6e6e6e;
+  --gold:#e2231a;
+  --gold-soft: rgba(226,35,26,0.08);
+  --gold-dim:#f3aca6;
+  --wine:#3a1f1c;
+  --radius: 2px;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);
+  color:var(--ivory);
+  font-family:'Jost', sans-serif;
+  font-weight:300;
+  line-height:1.6;
+  overflow-x:hidden;
+}
+a{color:inherit; text-decoration:none;}
+img{max-width:100%; display:block;}
+h1,h2,h3,h4{
+  font-family:'Cormorant Garamond', serif;
+  font-weight:500;
+  letter-spacing:0.01em;
+}
+.eyebrow{
+  font-family:'Jost', sans-serif;
+  font-size:11px;
+  letter-spacing:0.35em;
+  text-transform:uppercase;
+  color:var(--gold);
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+}
+.eyebrow::before{
+  content:"";
+  width:24px; height:1px;
+  background:var(--gold);
+}
+.container{
+  max-width:1240px;
+  margin:0 auto;
+  padding:0 32px;
+}
+section{position:relative;}
+
+/* ===== SCROLL / ENTRANCE ANIMATIONS ===== */
+.reveal{
+  opacity:0;
+  transform:translateY(44px);
+  transition:opacity .9s cubic-bezier(.19,1,.22,1), transform .9s cubic-bezier(.19,1,.22,1);
+  will-change:opacity, transform;
+}
+.reveal.visible{
+  opacity:1;
+  transform:translateY(0);
+}
+.reveal-left{
+  opacity:0;
+  transform:translateX(-50px);
+  transition:opacity .9s cubic-bezier(.19,1,.22,1), transform .9s cubic-bezier(.19,1,.22,1);
+}
+.reveal-left.visible{opacity:1; transform:translateX(0);}
+.reveal-right{
+  opacity:0;
+  transform:translateX(50px);
+  transition:opacity .9s cubic-bezier(.19,1,.22,1), transform .9s cubic-bezier(.19,1,.22,1);
+}
+.reveal-right.visible{opacity:1; transform:translateX(0);}
+.reveal-scale{
+  opacity:0;
+  transform:scale(0.94);
+  transition:opacity .8s ease, transform .8s ease;
+}
+.reveal-scale.visible{opacity:1; transform:scale(1);}
+.stagger > *{
+  opacity:0;
+  transform:translateY(30px);
+  transition:opacity .7s ease, transform .7s ease;
+}
+.stagger.visible > *{opacity:1; transform:translateY(0);}
+.stagger.visible > *:nth-child(1){transition-delay:.05s;}
+.stagger.visible > *:nth-child(2){transition-delay:.15s;}
+.stagger.visible > *:nth-child(3){transition-delay:.25s;}
+.stagger.visible > *:nth-child(4){transition-delay:.35s;}
+.stagger.visible > *:nth-child(5){transition-delay:.45s;}
+.stagger.visible > *:nth-child(6){transition-delay:.55s;}
+
+@keyframes heroFadeUp{
+  from{opacity:0; transform:translateY(36px);}
+  to{opacity:1; transform:translateY(0);}
+}
+.hero-copy .eyebrow{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) both;}
+.hero-copy h1{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) .12s both;}
+.hero-copy p{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) .24s both;}
+.hero-copy .hero-actions{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) .36s both;}
+.hero-copy .reel-tags{animation:heroFadeUp .9s cubic-bezier(.19,1,.22,1) .48s both;}
+.banner-form{animation:heroFadeUp 1s cubic-bezier(.19,1,.22,1) .3s both;}
+
+@media (prefers-reduced-motion: reduce){
+  .reveal, .reveal-left, .reveal-right, .reveal-scale, .stagger > *{
+    opacity:1 !important; transform:none !important; transition:none !important;
+  }
+  .hero-copy .eyebrow, .hero-copy h1, .hero-copy p, .hero-copy .hero-actions, .hero-copy .reel-tags, .banner-form{
+    animation:none !important;
+  }
+}
+
+/* ===== NAV ===== */
+header{
+  position:fixed; top:0; left:0; right:0;
+  z-index:200;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:22px 40px;
+  background:linear-gradient(to bottom, rgba(0,0,0,0.35), transparent);
+  transition:background .3s ease, padding .3s ease;
+}
+header.scrolled{
+  background:rgba(255,255,255,0.94);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+  padding:14px 40px;
+}
+.logo{
+  display:flex; align-items:center; gap:12px;
+  font-family:'Cormorant Garamond', serif;
+  font-size:24px;
+  letter-spacing:0.08em;
+}
+header .logo{
+  background:#ffffff;
+  padding:8px 16px;
+  border-radius:4px;
+}
+.logo img{height:38px; width:auto;}
+nav ul{
+  display:flex; gap:38px;
+  list-style:none;
+}
+nav a{
+  font-size:12px;
+  letter-spacing:0.18em;
+  text-transform:uppercase;
+  color:#ffffff;
+  position:relative;
+  padding-bottom:4px;
+  transition:color .3s ease;
+}
+header.scrolled nav a{color:var(--ivory);}
+nav a::after{
+  content:"";
+  position:absolute; left:0; bottom:0;
+  width:0; height:1px;
+  background:var(--gold);
+  transition:width .3s ease;
+}
+nav a:hover::after{width:100%;}
+.nav-right{display:flex; align-items:center; gap:24px;}
+.nav-right .btn-ghost{color:#ffffff; border-color:rgba(255,255,255,0.55);}
+header.scrolled .nav-right .btn-ghost{color:var(--gold); border-color:var(--gold-dim);}
+.btn-ghost{
+  border:1px solid var(--gold-dim);
+  color:var(--gold);
+  padding:11px 22px;
+  font-size:11px;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  transition:all .3s ease;
+  white-space:nowrap;
+}
+.btn-ghost:hover{background:var(--gold); color:#ffffff !important; border-color:var(--gold) !important;}
+.btn-solid{
+  background:var(--gold);
+  color:#ffffff;
+  padding:14px 30px;
+  font-size:11px;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  font-weight:500;
+  border:1px solid var(--gold);
+  transition:all .3s ease;
+  cursor:pointer;
+  display:inline-block;
+}
+.btn-solid:hover{background:transparent; color:var(--gold); transform:translateY(-2px);}
+.btn-solid:disabled{opacity:0.6; cursor:not-allowed; transform:none;}
+.menu-toggle{display:none; flex-direction:column; gap:5px; background:none; border:none; cursor:pointer;}
+.menu-toggle span{width:24px; height:1px; background:#ffffff; transition:background .3s ease;}
+header.scrolled .menu-toggle span{background:var(--ivory);}
+
+/* ===== HERO (VIDEO BANNER) ===== */
+.hero{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  padding:160px 0 100px;
+  position:relative;
+  overflow:hidden;
+  background:#0b0b0c;
+}
+.hero-video{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  z-index:0;
+}
+.hero-scrim{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  background:
+    linear-gradient(180deg, rgba(10,10,10,0.75) 0%, rgba(10,10,10,0.40) 42%, rgba(10,10,10,0.82) 100%),
+    linear-gradient(90deg, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.15) 55%);
+}
+.hero-grid{
+  position:relative; z-index:2;
+  display:grid;
+  grid-template-columns:1.15fr 0.85fr;
+  gap:60px;
+  align-items:start;
+}
+.hero-copy .eyebrow{margin-bottom:22px; color:var(--gold);}
+.hero-copy h1{
+  font-size:clamp(48px, 6.4vw, 92px);
+  line-height:0.98;
+  font-style:italic;
+  color:#ffffff;
+  margin-bottom:22px;
+}
+.hero-copy h1 span{color:var(--gold); font-style:normal;}
+.hero-copy p{
+  max-width:460px;
+  color:rgba(255,255,255,0.78);
+  font-size:16px;
+  margin-bottom:34px;
+}
+.hero-actions{display:flex; gap:16px; align-items:center; flex-wrap:wrap;}
+.hero-actions .btn-ghost{color:#ffffff; border-color:rgba(255,255,255,0.55);}
+.hero-actions .btn-ghost:hover{background:var(--gold); border-color:var(--gold); color:#ffffff;}
+.reel-tags{
+  margin-top:56px;
+  display:flex; flex-wrap:wrap; gap:0 28px;
+  color:rgba(255,255,255,0.65);
+  font-size:12px;
+  letter-spacing:0.15em;
+  text-transform:uppercase;
+  border-top:1px solid rgba(255,255,255,0.18);
+  padding-top:22px;
+}
+.reel-tags span{color:var(--gold); margin-right:6px;}
+
+/* ---- Enquiry panel wrapping the Bigin hosted form ---- */
+.form-panel{
+  background:#ffffff;
+  box-shadow:0 30px 70px rgba(20,18,14,0.10);
+  border:1px solid var(--line);
+  padding:34px 28px 24px;
+  position:relative;
+  animation:heroFadeUp 1s cubic-bezier(.19,1,.22,1) .3s both;
+  scroll-margin-top:100px;
+}
+.form-panel::before{
+  content:"";
+  position:absolute; top:0; left:0;
+  width:100%; height:2px;
+  background:linear-gradient(90deg, var(--gold), transparent);
+}
+.form-panel h3{
+  font-size:26px;
+  font-style:italic;
+  margin-bottom:6px;
+}
+.form-panel .sub{
+  color:var(--muted);
+  font-size:13px;
+  margin-bottom:18px;
+}
+/* Zoho injects its own iframe here — let it fill the panel */
+.bigin-form{width:100%; min-height:520px;}
+.bigin-form iframe{width:100% !important; border:0 !important; display:block;}
+
+/* ---- Banner enquiry form ---- */
+.banner-form{
+  background:#ffffff;
+  box-shadow:0 30px 70px rgba(20,18,14,0.10);
+  border:1px solid var(--line);
+  padding:38px 34px;
+  position:relative;
+}
+.banner-form::before{
+  content:"";
+  position:absolute; top:0; left:0;
+  width:100%; height:2px;
+  background:linear-gradient(90deg, var(--gold), transparent);
+}
+.banner-form h3{
+  font-size:26px;
+  font-style:italic;
+  margin-bottom:6px;
+}
+.banner-form .sub{
+  color:var(--muted);
+  font-size:13px;
+  margin-bottom:26px;
+}
+.field{margin-bottom:16px;}
+.field-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:0 20px;
+}
+.field-row .field{min-width:0;}
+.field label{
+  display:block;
+  font-size:10px;
+  letter-spacing:0.18em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+.field input,
+.field select,
+.field textarea{
+  width:100%;
+  background:transparent;
+  border:none;
+  border-bottom:1px solid var(--line);
+  color:var(--ivory);
+  font-family:'Jost', sans-serif;
+  font-size:14px;
+  padding:9px 2px;
+  outline:none;
+  transition:border-color .3s ease;
+}
+.field select option{background:#ffffff; color:var(--ivory);}
+.field input:focus,
+.field select:focus,
+.field textarea:focus{border-color:var(--gold);}
+.field textarea{resize:none;}
+
+/* ---- Phone field with dial-code dropdown ---- */
+.phone-field{position:relative;}
+.phone-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border-bottom:1px solid var(--line);
+  transition:border-color .3s ease;
+}
+.phone-row:focus-within{border-color:var(--gold);}
+.phone-row input{border-bottom:none; flex:1; min-width:0;}
+.dial-trigger{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:transparent;
+  border:none;
+  border-right:1px solid var(--line);
+  padding:9px 12px 9px 2px;
+  font-family:'Jost', sans-serif;
+  font-size:14px;
+  color:var(--ivory);
+  cursor:pointer;
+  white-space:nowrap;
+  transition:color .25s ease;
+}
+.dial-trigger:hover{color:var(--gold);}
+.dial-caret{font-size:10px; color:var(--muted);}
+.dial-menu{
+  position:absolute;
+  z-index:40;
+  top:100%;
+  left:0;
+  width:100%;
+  max-width:340px;
+  margin-top:6px;
+  background:#ffffff;
+  border:1px solid var(--line);
+  box-shadow:0 24px 50px rgba(20,18,14,0.16);
+  display:flex;
+  flex-direction:column;
+  max-height:280px;
+}
+.dial-search{
+  width:100%;
+  border:none;
+  border-bottom:1px solid var(--line);
+  padding:12px 14px;
+  font-family:'Jost', sans-serif;
+  font-size:13px;
+  color:var(--ivory);
+  outline:none;
+}
+.dial-search::placeholder{color:var(--muted);}
+.dial-list{overflow-y:auto; flex:1;}
+.dial-option{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  width:100%;
+  background:transparent;
+  border:none;
+  border-bottom:1px solid rgba(0,0,0,0.05);
+  padding:11px 14px;
+  font-family:'Jost', sans-serif;
+  font-size:13.5px;
+  color:var(--ivory);
+  text-align:left;
+  cursor:pointer;
+  transition:background .2s ease;
+}
+.dial-option:hover{background:var(--gold-soft);}
+.dial-option.active{background:var(--gold-soft); color:var(--gold);}
+.dial-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.dial-num{color:var(--muted); flex-shrink:0;}
+.dial-option.active .dial-num{color:var(--gold);}
+.dial-empty{
+  padding:18px 14px;
+  text-align:center;
+  color:var(--muted);
+  font-size:13px;
+}
+.banner-form .btn-solid{width:100%; text-align:center; margin-top:6px;}
+.form-note{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:14px;
+  text-align:center;
+  letter-spacing:0.03em;
+}
+
+/* ===== ABOUT (IMAGE SECTION) ===== */
+.about{
+  padding:130px 0;
+  border-top:1px solid var(--line);
+}
+.about-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:70px;
+  align-items:center;
+}
+.about h2{
+  font-size:clamp(34px,4vw,52px);
+  font-style:italic;
+  line-height:1.1;
+  margin:16px 0 24px;
+}
+.about p{color:var(--muted); font-size:15px; margin-bottom:18px; max-width:520px;}
+.stat-row{
+  display:flex;
+  gap:48px;
+  margin-top:36px;
+  padding-top:30px;
+  border-top:1px solid var(--line);
+}
+.stat b{
+  display:block;
+  font-family:'Cormorant Garamond', serif;
+  font-size:44px;
+  color:var(--gold);
+  font-style:italic;
+}
+.stat span{font-size:11px; letter-spacing:0.15em; text-transform:uppercase; color:var(--muted);}
+
+.about-frame{
+  aspect-ratio:4/5;
+  position:relative;
+  overflow:hidden;
+  border:1px solid var(--line);
+  display:flex; align-items:flex-end;
+  padding:26px;
+  background:#f0ede4;
+}
+.about-frame img{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  z-index:0;
+  transition:transform .8s ease;
+}
+.about-frame:hover img{transform:scale(1.06);}
+.about-frame::after{
+  content:"";
+  position:absolute; inset:0;
+  background:linear-gradient(180deg, transparent 45%, rgba(8,8,8,0.72) 100%);
+  z-index:1;
+  pointer-events:none;
+}
+.about-frame .corner{
+  position:absolute; width:22px; height:22px;
+  border:1px solid var(--gold);
+  z-index:2;
+}
+.about-frame .tl{top:14px; left:14px; border-right:none; border-bottom:none;}
+.about-frame .br{bottom:14px; right:14px; border-left:none; border-top:none;}
+.about-frame .about-tag{
+  position:relative;
+  z-index:2;
+  color:#ffffff;
+  font-family:'Cormorant Garamond', serif;
+  font-style:italic;
+  font-size:20px;
+  line-height:1.3;
+}
+
+/* ===== SERVICES (HOVER VIDEO) ===== */
+.services{
+  padding:130px 0;
+  background:var(--bg-alt);
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+}
+.section-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:40px;
+  margin-bottom:64px;
+  flex-wrap:wrap;
+}
+.section-head h2{
+  font-size:clamp(32px,4vw,50px);
+  font-style:italic;
+  margin-top:14px;
+}
+.section-head p{color:var(--muted); max-width:340px; font-size:14px;}
+.service-list{border-top:1px solid var(--line);}
+.service-row{
+  position:relative;
+  overflow:hidden;
+  display:grid;
+  grid-template-columns:90px 1fr 1fr 40px;
+  gap:24px;
+  align-items:center;
+  min-height:220px;
+  padding:64px 28px;
+  border-bottom:1px solid var(--line);
+  isolation:isolate;
+  transition:padding .35s ease;
+}
+.service-row > *{position:relative; z-index:2;}
+.service-video{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  z-index:0;
+  opacity:0;
+  transform:scale(1.04);
+  transition:opacity .5s ease, transform .6s ease;
+  pointer-events:none;
+}
+.service-scrim{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  background:linear-gradient(90deg, rgba(6,6,6,0.82) 0%, rgba(6,6,6,0.45) 65%, rgba(6,6,6,0.20) 100%);
+  opacity:0;
+  transition:opacity .45s ease;
+  pointer-events:none;
+}
+.service-row:hover{padding-left:38px;}
+.service-row:hover .service-video{opacity:1; transform:scale(1);}
+.service-row:hover .service-scrim{opacity:1;}
+.service-row .tc{
+  font-family:'Jost';
+  font-size:12px;
+  color:var(--gold);
+  letter-spacing:0.1em;
+  transition:color .35s ease;
+}
+.service-row h4{
+  font-size:28px;
+  font-style:italic;
+  font-weight:500;
+  transition:color .35s ease;
+}
+.service-row p{color:var(--muted); font-size:14px; transition:color .35s ease;}
+.service-row .arrow{
+  font-size:22px; color:var(--gold);
+  transition:transform .3s ease, color .35s ease;
+}
+.service-row:hover .arrow{transform:translate(4px,-4px);}
+.service-row:hover .tc{color:#ffffff;}
+.service-row:hover h4{color:#ffffff;}
+.service-row:hover p{color:rgba(255,255,255,0.82);}
+.service-row:hover .arrow{color:#ffffff;}
+
+/* ===== PROCESS ===== */
+.process{padding:130px 0;}
+.process-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:1px;
+  background:var(--line);
+  border:1px solid var(--line);
+  margin-top:60px;
+}
+.process-step{
+  background:var(--bg);
+  padding:40px 30px;
+  transition:background .35s ease, transform .35s ease;
+}
+.process-step:hover{background:var(--gold-soft); transform:translateY(-6px);}
+.process-step .tc{
+  font-family:'Cormorant Garamond', serif;
+  font-style:italic;
+  color:var(--gold);
+  font-size:15px;
+  margin-bottom:30px;
+}
+.process-step h4{font-size:22px; margin-bottom:14px; letter-spacing:0.05em;}
+.process-step p{color:var(--muted); font-size:13.5px;}
+
+/* ===== CTA STRIP ===== */
+.cta-strip{
+  padding:140px 0;
+  text-align:center;
+  background:
+    radial-gradient(ellipse 70% 90% at 50% 0%, rgba(226,35,26,0.08), transparent 65%),
+    var(--bg-alt);
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+}
+.cta-strip .eyebrow{justify-content:center;}
+.cta-strip .eyebrow::before{display:none;}
+.cta-strip h2{
+  font-size:clamp(38px,6vw,72px);
+  font-style:italic;
+  max-width:840px;
+  margin:22px auto 26px;
+  line-height:1.05;
+}
+.cta-strip p{color:var(--muted); max-width:480px; margin:0 auto 40px; font-size:15px;}
+.cta-actions{display:flex; gap:18px; justify-content:center; flex-wrap:wrap;}
+
+/* ===== FOOTER ===== */
+footer{padding:90px 0 30px;}
+.footer-grid{
+  display:grid;
+  grid-template-columns:1.4fr 1fr 1fr 1fr;
+  gap:40px;
+  padding-bottom:60px;
+  border-bottom:1px solid var(--line);
+}
+.footer-brand .logo{margin-bottom:18px;}
+.footer-brand p{color:var(--muted); font-size:13.5px; max-width:300px; margin-bottom:18px;}
+.footer-brand a.mail{color:var(--gold); font-size:14px;}
+footer h5{
+  font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:20px;
+}
+footer ul{list-style:none;}
+footer li{margin-bottom:12px;}
+footer ul a{font-size:13.5px; color:var(--ivory); opacity:0.85; transition:opacity .25s ease, color .25s ease;}
+footer ul a:hover{color:var(--gold); opacity:1;}
+.footer-bottom{
+  display:flex; justify-content:space-between; align-items:center;
+  padding-top:26px;
+  font-size:12px;
+  color:var(--muted);
+  flex-wrap:wrap; gap:12px;
+}
+.socials{display:flex; gap:18px;}
+.socials a{transition:color .25s ease;}
+.socials a:hover{color:var(--gold);}
+
+/* ===== FLOATING ENQUIRE BUTTON ===== */
+.float-btn{
+  position:fixed;
+  right:28px; bottom:28px;
+  z-index:150;
+  background:var(--gold);
+  color:#ffffff;
+  border:none;
+  padding:16px 26px;
+  font-family:'Jost';
+  font-size:11px;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  font-weight:600;
+  cursor:pointer;
+  display:flex; align-items:center; gap:10px;
+  box-shadow:0 10px 30px rgba(226,35,26,0.35);
+  transition:transform .25s ease, background .25s ease;
+}
+.float-btn:hover{transform:translateY(-3px); background:#b81b14;}
+.float-btn .dot{
+  width:7px; height:7px; border-radius:50%;
+  background:#ffffff;
+  animation:pulse 1.6s infinite;
+}
+@keyframes pulse{
+  0%,100%{opacity:1;} 50%{opacity:0.25;}
+}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:960px){
+  .hero-grid{grid-template-columns:1fr;}
+  .about-grid{grid-template-columns:1fr;}
+  .about-frame{aspect-ratio:16/9; order:-1;}
+  .process-grid{grid-template-columns:repeat(2,1fr);}
+  .footer-grid{grid-template-columns:1fr 1fr;}
+  .service-row{grid-template-columns:50px 1fr 24px; padding:48px 18px; min-height:180px;}
+  .service-row p{display:none;}
+}
+@media(max-width:720px){
+  header{padding:18px 20px;}
+  nav, .nav-right .btn-ghost{display:none;}
+  .menu-toggle{display:flex;}
+  .container{padding:0 20px;}
+  .hero{padding:130px 0 70px;}
+  .hero-copy p{max-width:100%;}
+  .stat-row{flex-wrap:wrap; gap:28px;}
+  .process-grid{grid-template-columns:1fr;}
+  .footer-grid{grid-template-columns:1fr;}
+  .float-btn{right:16px; bottom:16px; padding:14px 20px; font-size:10px;}
+  .service-row{min-height:160px; padding:38px 16px;}
+  .banner-form{padding:30px 22px;}
+  .field-row{grid-template-columns:1fr;}
+  .about{padding:90px 0;}
+  .services{padding:90px 0;}
+  .process{padding:90px 0;}
+  .cta-strip{padding:100px 0;}
+  footer{padding:70px 0 24px;}
+}
+@media(max-width:480px){
+  .hero-copy h1{font-size:clamp(38px,11vw,56px);}
+  .logo img{height:30px;}
+  header .logo{padding:6px 12px;}
+  .hero-actions{flex-direction:column; align-items:stretch;}
+  .hero-actions a{text-align:center;}
+  .reel-tags{gap:8px 18px; font-size:11px;}
+  .cta-actions{flex-direction:column; align-items:stretch;}
+  .cta-actions a{text-align:center;}
+  .stat-row{gap:20px;}
+  .stat b{font-size:34px;}
+  .footer-bottom{flex-direction:column; align-items:flex-start;}
+}
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important; transition:none !important;}
+}
+@media (hover:none){
+  /* touch devices: no hover video trigger, just keep static row */
+  .service-video, .service-scrim{display:none;}
+}
+`;
