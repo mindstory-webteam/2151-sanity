@@ -1,13 +1,25 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
-import { Mail, Phone, MapPin, ArrowUpRight, Send } from "lucide-react";
+import React, { useRef, useEffect, useMemo, useState } from "react";
+import { Mail, Phone, MapPin, ArrowUpRight } from "lucide-react";
 import SplitText from "./Splittext";
 import RollButton from "./Rollbutton";
+import GetQuoteForm from "./GetQuoteForm";
 
-const EJS_SERVICE_ID  = "service_zwdympt";
-const EJS_TEMPLATE_ID = "template_vikbi0a";
-const EJS_PUBLIC_KEY  = "3YkH5VjLx7c2I0N3y";
+/* Same-origin dark copy of the Bigin hosted form (public/forms/contact-form.html) */
+const CONTACT_FORM_SRC = "/forms/contact-form.html";
+
+/* PLACEHOLDER HEIGHTS ONLY — contact-form.html measures itself and posts
+   { type: 'bigin-height', height }, which GetQuoteForm uses to size the frame.
+   These two numbers only reserve space for the first paint. */
+const FORM_HEIGHT = 700;
+const FORM_HEIGHT_MOBILE = 900;
+
+/* Written by the home page's attribution capture — reused here so a lead who
+   landed on a campaign URL and enquired from /contact still credits it. */
+const TRACKING_KEY = "f21_tracking";
+
+const clip = (v: string | null | undefined, max = 255) => (v ?? "").trim().slice(0, max);
 
 /* ─────────────────────────────────────────────────────────────
    CONTACT SECTION
@@ -15,16 +27,15 @@ const EJS_PUBLIC_KEY  = "3YkH5VjLx7c2I0N3y";
 const Contact = () => {
   const sectionRef = useRef<HTMLElement>(null);
 
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    company: "",
-    service: "",
-    message: "",
+  const [sent, setSent] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [trackingReady, setTrackingReady] = useState(false);
+  const [prefill, setPrefill] = useState({
+    leadPageUrl: "",
+    utmSource: "",
+    utmCampaign: "",
+    utmContent: "",
   });
-  const [sending, setSending] = useState(false);
-  const [sent,    setSent]    = useState(false);
-  const [error,   setError]   = useState("");
 
   /* reveal on scroll */
   useEffect(() => {
@@ -45,69 +56,64 @@ const Contact = () => {
     return () => io.disconnect();
   }, []);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-    if (error) setError("");
-  };
+  /* viewport → placeholder height */
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
-  const handleSubmit = async () => {
-    if (!formData.name || !formData.email) return;
-    setError("");
-    setSending(true);
-
+  /* attribution: this page's URL, plus utm from the URL or the stored session touch */
+  useEffect(() => {
+    const href = clip(window.location.href);
     try {
-      // Dynamically import so it's only loaded client-side
-      const emailjs = (await import("@emailjs/browser")).default;
-
-      const result = await emailjs.send(
-        EJS_SERVICE_ID,
-        EJS_TEMPLATE_ID,
-        {
-          name:    formData.name,
-          message: [
-            `Email: ${formData.email}`,
-            formData.company ? `Company: ${formData.company}` : "",
-            formData.service ? `Service: ${formData.service}` : "",
-            formData.message ? `\n${formData.message}` : "",
-          ].filter(Boolean).join("\n"),
-          time:    new Date().toLocaleString("en-IN", {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }),
-        },
-        EJS_PUBLIC_KEY
-      );
-
-      if (result.status === 200) {
-        setSent(true);
-      } else {
-        throw new Error("Unexpected response from EmailJS");
+      const params = new URLSearchParams(window.location.search);
+      let saved: Record<string, string> | null = null;
+      try {
+        const raw = window.sessionStorage.getItem(TRACKING_KEY);
+        saved = raw ? JSON.parse(raw) : null;
+      } catch {
+        /* private mode — tracking is best effort */
       }
-    } catch (err: any) {
-      console.error("EmailJS error:", err);
-      // Show a human-readable message instead of [object Object]
-      const msg =
-        typeof err?.text === "string"  ? err.text  :
-        typeof err?.message === "string" ? err.message :
-        "Failed to send. Please try again or email us directly.";
-      setError(msg);
-    } finally {
-      setSending(false);
-    }
-  };
 
-  const services = [
-    "AI Video",
-    "Anchor / Presenter",
-    "Concept Video",
-    "Explainer Video",
-    "Product Video",
-    "Campaign",
-    "Interview",
-    "Other",
-  ];
+      setPrefill({
+        leadPageUrl: href,
+        utmSource: clip(params.get("utm_source") || saved?.utmSource),
+        utmCampaign: clip(params.get("utm_campaign") || saved?.utmCampaign),
+        utmContent: clip(params.get("utm_content") || saved?.utmContent),
+      });
+    } catch (err) {
+      console.error("Tracking capture failed:", err);
+      setPrefill((p) => ({ ...p, leadPageUrl: href }));
+    } finally {
+      /* the form must load even if attribution failed entirely */
+      setTrackingReady(true);
+    }
+  }, []);
+
+  /* the iframe tells us when a submission actually went through */
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "bigin-submitted") setSent(true);
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  const overrides = useMemo(
+    () => ({
+      leadPageUrl: prefill.leadPageUrl,
+      utmSource: prefill.utmSource,
+      utmCampaign: prefill.utmCampaign,
+      utmContent: prefill.utmContent,
+    }),
+    [prefill.leadPageUrl, prefill.utmSource, prefill.utmCampaign, prefill.utmContent]
+  );
+
+  const formHeight = isMobile ? FORM_HEIGHT_MOBILE : FORM_HEIGHT;
 
   /* ─────────────────────────────────────────────
      CONTACT INFO — each entry can hold one or more
@@ -126,7 +132,6 @@ const Contact = () => {
       icon: <Phone size={16} />,
       label: "Call Us",
       items: [
-        
         { value: "+91 8281610051", href: "tel:+918281610051" },
         { value: "+91 9778189712", href: "tel:+919778189712" },
       ],
@@ -300,53 +305,21 @@ const Contact = () => {
           text-transform: uppercase; color: #fff; line-height: 1;
         }
 
-        .ct-form { display: flex; flex-direction: column; gap: 3px; }
-        .ct-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
-        .ct-field { display: flex; flex-direction: column; gap: 0; }
-        .ct-label {
-          font-family: 'DM Sans', sans-serif; font-size: 9px; letter-spacing: 0.26em;
-          text-transform: uppercase; color: rgba(255,255,255,0.3); padding: 10px 16px 0;
-          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
-          border-bottom: none;
+        /* ── BIGIN IFRAME ──
+           contact-form.html measures itself and GetQuoteForm sets the frame
+           height to match, so this wrapper must NOT impose a floor of its own.
+           font-size/line-height:0 kills the inline-box descender gap. */
+        .ct-bigin { width: 100%; min-height: 0; font-size: 0; line-height: 0; }
+        .ct-bigin iframe {
+          width: 100% !important;
+          border: 0 !important;
+          display: block;
+          vertical-align: bottom;
         }
-        .ct-input, .ct-select, .ct-textarea {
-          font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 400;
-          color: #fff; background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.06); border-top: none;
-          padding: 10px 16px 14px; outline: none;
-          transition: background 0.2s, border-color 0.2s; width: 100%; -webkit-appearance: none;
-        }
-        .ct-input::placeholder, .ct-textarea::placeholder { color: rgba(255,255,255,0.18); }
-        .ct-input:focus, .ct-select:focus, .ct-textarea:focus {
-          background: rgba(200,55,45,0.06); border-color: rgba(200,55,45,0.4);
-        }
-        .ct-select { cursor: pointer; color: rgba(255,255,255,0.6); }
-        .ct-select option { background: var(--black); color: #fff; }
-        .ct-textarea { resize: none; height: 110px; }
-
-        .ct-submit-row {
-          display: flex; align-items: center; justify-content: space-between;
-          gap: 16px; margin-top: 4px; padding-top: 20px;
-          border-top: 1px solid rgba(255,255,255,0.06);
-        }
-        .ct-submit-note {
+        .ct-form-note {
           font-family: 'DM Sans', sans-serif; font-size: 10px;
           letter-spacing: 0.14em; color: rgba(255,255,255,0.2); line-height: 1.6;
-        }
-        .ct-submit-btn {
-          display: flex; align-items: center; gap: 10px; padding: 14px 28px;
-          background: var(--red); border: none; color: #fff;
-          font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 500;
-          letter-spacing: 0.28em; text-transform: uppercase; cursor: pointer;
-          white-space: nowrap; flex-shrink: 0; transition: background 0.2s, transform 0.15s;
-        }
-        .ct-submit-btn:hover:not(:disabled) { background: #a82d24; transform: translateY(-1px); }
-        .ct-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-        .ct-error {
-          font-family: 'DM Sans', sans-serif; font-size: 11px; letter-spacing: 0.14em;
-          color: #ff6b6b; background: rgba(255,107,107,0.08);
-          border: 1px solid rgba(255,107,107,0.2); padding: 10px 16px; margin-top: 4px;
+          margin-top: 18px;
         }
 
         .ct-success {
@@ -414,9 +387,7 @@ const Contact = () => {
           .ct-body { padding: 32px 28px 0; }
           .ct-strip { padding: 24px 28px 0; flex-direction: column; align-items: flex-start; }
           .ct-form-wrap { padding: 32px 24px; }
-          .ct-form-row { grid-template-columns: 1fr; }
           .ct-left { flex-direction: column; }
-          .ct-submit-row { flex-direction: column; align-items: flex-start; }
         }
         @media (max-width: 480px) {
           .ct-hdr { padding: 48px 20px 32px; }
@@ -439,7 +410,6 @@ const Contact = () => {
             autoRoll
             autoRollInterval={5500}
             autoRollDuration={620}
-            
           />
           <SplitText
             text="Something."
@@ -474,8 +444,8 @@ const Contact = () => {
                 <span className="ct-info-text">
                   <span className="ct-info-label">{info.label}</span>
                   {info.items.map((item, idx) => (
-                    <a
-                      key={idx}
+                    
+                    <a  key={idx}
                       href={item.href}
                       className="ct-info-val ct-info-val-link"
                     >
@@ -511,7 +481,7 @@ const Contact = () => {
           </div>
         </div>
 
-        {/* ── RIGHT — FORM ── */}
+        {/* ── RIGHT — BIGIN FORM ── */}
         <div className="ct-form-wrap" data-reveal data-d="2">
           <div className="ct-form-head">
             <span className="ct-form-eyebrow">Start a Project</span>
@@ -528,61 +498,23 @@ const Contact = () => {
               </p>
             </div>
           ) : (
-            <div className="ct-form">
-              <div className="ct-form-row">
-                <div className="ct-field">
-                  <label className="ct-label">Your Name *</label>
-                  <input className="ct-input" type="text" name="name"
-                    placeholder="John Smith" value={formData.name}
-                    onChange={handleChange} autoComplete="off" />
-                </div>
-                <div className="ct-field">
-                  <label className="ct-label">Email Address *</label>
-                  <input className="ct-input" type="email" name="email"
-                    placeholder="john@company.com" value={formData.email}
-                    onChange={handleChange} autoComplete="off" />
-                </div>
+            <>
+              <div className="ct-bigin">
+                {trackingReady ? (
+                  <GetQuoteForm
+                    src={CONTACT_FORM_SRC}
+                    minHeight={formHeight}
+                    overrides={overrides}
+                  />
+                ) : (
+                  /* reserves the same space so the panel does not jump on load */
+                  <div style={{ height: formHeight }} aria-hidden="true" />
+                )}
               </div>
-
-              <div className="ct-form-row">
-                <div className="ct-field">
-                  <label className="ct-label">Company / Brand</label>
-                  <input className="ct-input" type="text" name="company"
-                    placeholder="Your company name" value={formData.company}
-                    onChange={handleChange} autoComplete="off" />
-                </div>
-                <div className="ct-field">
-                  <label className="ct-label">Service Needed</label>
-                  <select className="ct-select" name="service"
-                    value={formData.service} onChange={handleChange}>
-                    <option value="">Select a service</option>
-                    {services.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="ct-field">
-                <label className="ct-label">Project Brief</label>
-                <textarea className="ct-textarea" name="message"
-                  placeholder="Tell us about your project, goals, timeline, and budget..."
-                  value={formData.message} onChange={handleChange} />
-              </div>
-
-              {error && <p className="ct-error">{error}</p>}
-
-              <div className="ct-submit-row">
-                <p className="ct-submit-note">
-                  We respond within 24 hours.<br />No spam, ever.
-                </p>
-                <button
-                  className="ct-submit-btn"
-                  onClick={handleSubmit}
-                  disabled={sending || !formData.name || !formData.email}
-                >
-                  {sending ? <>Sending…</> : <><Send size={12} /> Send Message</>}
-                </button>
-              </div>
-            </div>
+              <p className="ct-form-note">
+                We respond within 24 hours. No spam, ever.
+              </p>
+            </>
           )}
         </div>
       </div>
