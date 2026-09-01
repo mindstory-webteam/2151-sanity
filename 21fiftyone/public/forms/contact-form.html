@@ -8,386 +8,34 @@
 <!-- =========================================================
      ZOHO BIGIN — SELF-HOSTED COPY OF THE HOSTED FORM
      ---------------------------------------------------------
-     Everything from here down to the closing </body> comment
-     is copied VERBATIM from Bigin's own hosted form page
-     (view-source of the "2151 Get Quote" hosted form).
-     Do not restructure the HTML or rename the JS function names —
-     the validation, mandatory-field check, phone-country dropdown
-     all depend on the exact ids/classes/globals used below.
+     Form: "MS Get Quote"  (record id suffix 7522188000000623170)
+
+     Everything from the <body> tag down to the "end verbatim
+     Bigin markup" comment is copied from Bigin's own hosted form
+     source. Do not restructure the HTML or rename the JS function
+     names — validation, the mandatory-field check, the phone
+     country dropdown and the reCAPTCHA callbacks all depend on
+     the exact ids/classes/globals used below.
 
      This file is the DARK twin of get-quote.html: same Zoho block,
      same tokens, same pipeline — only the BRAND OVERRIDES block
      differs, so it sits inside the black .ct-form-wrap panel on
      the contact page. Leads from the two files are told apart by
-     the hidden Lead Page URL field (POTENTIALCF4).
+     the hidden Lead Page URL field (POTENTIALCF4) and by
+     `from=contact` on the thank-you redirect.
 
-     If you ever edit this form's fields inside Bigin, the tokens
-     (xnQsjsdp, xmIwtLD, zc_gad, the wf_script rid/gid, and every
-     numeric ID suffixed 7522188000000639254) will regenerate. Re-view-source
-     the hosted form and replace everything in this block, then
-     reapply the "BRAND OVERRIDES" block at the bottom — in BOTH
-     get-quote.html and this file.
+     If you edit this form's fields inside Bigin, the tokens
+     (xnQsjsdp, xmIwtLD, the wf_script rid/gid, and every numeric
+     id suffixed 7522188000000623170) will regenerate. Re-view-source
+     the hosted form, replace the block, re-hide the UTM rows, then
+     reapply the BRAND OVERRIDES — in BOTH get-quote.html and here.
+
+     ORDER MATTERS: Zoho's stylesheet comes first, the brand
+     overrides second. The previous version of this file had the
+     dark block pasted BEFORE Zoho's stylesheet as well as after,
+     so the first copy was being overwritten and only the (older)
+     second copy did anything. There is now exactly one, below.
      ========================================================= -->
-     <!-- =========================================================
-     BRAND OVERRIDES — DARK (contact page panel)
-     Loaded after Zoho's stylesheet above, so it wins.
-     Matches Contact.tsx: DM Sans, #0c0c0c panel, red #c8372d,
-     3px gutters, label sitting on top of its own field box.
-     Nothing here touches the JS, ids, or field names Zoho needs.
-     ========================================================= -->
-<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap');
-
-:root {
-  --ff-brand: 'DM Sans', 'Helvetica Neue', Arial, sans-serif;
-  --c-red: #c8372d;
-  --c-red-dark: #a82d24;
-  --c-line: rgba(255, 255, 255, 0.06);
-  --c-field: rgba(255, 255, 255, 0.04);
-  /* Opaque twin of --c-field over the #0c0c0c panel. Used wherever a
-     real colour is needed instead of a translucent one — autofill,
-     native dropdown lists. */
-  --c-field-solid: #161616;
-  --c-lbl: rgba(255, 255, 255, 0.30);
-  --c-txt: #ffffff;
-  --c-err: #ff6b6b;
-}
-
-/* Tells the browser this document is dark, so native UI it draws itself —
-   select popups, scrollbars, the caret, form autofill styling — comes out
-   dark instead of light-on-light. */
-html { color-scheme: dark; }
-
-/* ---- 1. SHELL: fully transparent — the black panel belongs to the
-   parent page (.ct-form-wrap), not to this document. ---- */
-html, body {
-  background: transparent !important;
-  height: auto !important;
-}
-.wf-parent {
-  background: transparent !important;
-  padding: 0 !important;
-  height: auto !important;
-  overflow: visible !important;
-}
-.wf-wrapper {
-  max-width: none !important;
-  width: 100% !important;
-  margin: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  color: var(--c-txt) !important;
-}
-.wf-form-component {
-  padding: 0 !important;
-  font-size: 14px !important;
-}
-.wf-form-component,
-.wf-form-component * {
-  font-family: var(--ff-brand) !important;
-}
-.wf-header { display: none !important; } /* the panel already shows "Tell Us About Your Vision" */
-
-/* Selected text was white-on-near-white by default */
-::selection {
-  background: rgba(200, 55, 45, 0.55);
-  color: #fff;
-}
-
-/* If Zoho's badge shows on your plan, let it sit below the button
-   instead of floating over it. */
-.wform-poweredby-container {
-  position: static !important;
-  display: inline-flex !important;
-  margin-top: 14px;
-  border-radius: 2px;
-}
-
-/* ---- 2. LAYOUT: two columns, 3px gutters like the rest of the panel ----
-   Name | Company
-   Mobile | Email
-   Service interested in | Monthly/Project budget
-   When do you want to start?       (full width, row 7)
-   Tell us about your requirement   (full width, row 8)
-   The hidden UTM / pipeline rows are display:none, so they never
-   take up a grid cell. */
-.wf-form-wrapper {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px;
-  align-items: start;
-}
-.wf-form-wrapper > .wf-row:nth-child(7),
-.wf-form-wrapper > .wf-row:nth-child(8) {
-  grid-column: 1 / -1;
-}
-.wf-row {
-  margin-bottom: 0 !important;
-  min-width: 0;
-}
-.wform-btn-wrap {
-  grid-column: 1 / -1;
-  margin-top: 20px !important;
-  padding-top: 20px;
-  border-top: 1px solid var(--c-line);
-}
-
-/* ---- 3. LABELS: capped on top of the field, sharing its box ---- */
-.wf-label {
-  font-size: 9px !important;
-  letter-spacing: 0.26em;
-  text-transform: uppercase;
-  color: var(--c-lbl) !important;
-  background: var(--c-field);
-  border: 1px solid var(--c-line);
-  border-bottom: none;
-  padding: 10px 16px 0 !important;
-}
-.wf-row:has(.wf-field-mandatory) .wf-label::after {
-  content: ' *';
-  color: var(--c-red);
-}
-.wf-field-mandatory .wf-field-inner::before { display: none !important; }
-
-/* ---- 4. FIELDS ---- */
-.wf-field-input,
-select.wf-field-dropdown,
-.multiselect.wf-field-dropdown,
-.wform-field-item-upload-input {
-  width: 100%;
-  background: var(--c-field) !important;
-  border: 1px solid var(--c-line) !important;
-  border-top: none !important;
-  border-radius: 0 !important;
-  color: var(--c-txt) !important;
-  font-size: 14px !important;
-  padding: 10px 16px 14px !important;
-  min-height: 44px;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-.wf-field-input::placeholder { color: rgba(255, 255, 255, 0.18); }
-.wf-field-input:focus,
-select.wf-field-dropdown:focus {
-  background: rgba(200, 55, 45, 0.06) !important;
-  border-color: rgba(200, 55, 45, 0.40) !important;
-  box-shadow: none !important;
-  outline: none;
-}
-
-/* ---- 4b. AUTOFILL ----
-   Chrome paints saved values with its own opaque wash (the pale blue box)
-   from a UA rule, and re-paints it on hover/focus/active — which on a dark
-   panel leaves white text on near-white. Three things are needed together:
-
-     · the inset box-shadow, which is the only way to repaint that area
-       (background-color is locked by the UA sheet);
-     · -webkit-text-fill-color, since `color` alone is also overridden;
-     · the absurd transition delay, which stops newer Chrome re-running the
-       wash animation when the field is focused or hovered.
-
-   All of it needs !important to outrank the UA rule — that was the bug.
-   Every state is listed explicitly because Chrome treats them separately. */
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus,
-input:-webkit-autofill:active,
-textarea:-webkit-autofill,
-textarea:-webkit-autofill:hover,
-textarea:-webkit-autofill:focus,
-select:-webkit-autofill,
-select:-webkit-autofill:hover,
-select:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px var(--c-field-solid) inset !important;
-  box-shadow: 0 0 0 1000px var(--c-field-solid) inset !important;
-  -webkit-text-fill-color: var(--c-txt) !important;
-  color: var(--c-txt) !important;
-  caret-color: var(--c-txt) !important;
-  transition: background-color 100000s ease-in-out 0s !important;
-}
-/* Focused autofilled field keeps the same faint red tint as a normal one */
-input:-webkit-autofill:focus,
-textarea:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px #1c1414 inset !important;
-  box-shadow: 0 0 0 1000px #1c1414 inset !important;
-}
-/* Firefox and the standardised selector */
-input:autofill,
-textarea:autofill,
-select:autofill {
-  filter: none; /* Firefox tints autofilled fields via filter */
-  -webkit-text-fill-color: var(--c-txt) !important;
-  color: var(--c-txt) !important;
-  background: var(--c-field-solid) !important;
-}
-
-/* ---- 5. SELECTS ---- */
-select.wf-field-dropdown {
-  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-opacity='0.45' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
-  background-repeat: no-repeat !important;
-  background-position: right 14px center !important;
-  padding-right: 38px !important;
-  cursor: pointer;
-}
-/* Zoho paints a solid black caret triangle via .dropdown-contents::after.
-   Kill it for the select rows only — the phone dropdown carries the same
-   class on an inner div and is restyled in section 6 instead. */
-.wf-field-inner.dropdown-contents::after { display: none !important; }
-select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 255, 255, 0.35) !important; }
-.wf-form-component option {
-  background: var(--c-field-solid);
-  color: #fff;
-}
-
-/* ---- 6. PHONE: dial-code box + number share the one field box ---- */
-.multiple-fields-div.flex-1-5 .field-1 { flex: 0 0 96px !important; }
-.multiselect.wf-field-dropdown {
-  padding: 0 !important;
-  border-right: 0 !important;
-}
-.multiselect.dropbox-active {
-  border-radius: 0 !important;
-  border-color: rgba(200, 55, 45, 0.40) !important;
-}
-.ux-pick-mixed .wf-field-dropdown.dropbox-active::after { display: none !important; }
-.ux-pick-mixed .dropdown-contents {
-  padding: 0 26px 0 16px !important;
-  height: 44px !important;
-}
-.ux-pick-mixed .dropdown-contents::after {
-  inset-inline-end: 10px !important;
-  border-top-color: rgba(255, 255, 255, 0.45) !important;
-}
-.content-display-area {
-  font-size: 14px !important;
-  color: #fff;
-  margin-inline-end: 0 !important;
-}
-.multiple-fields-div .wf-field-item:not(.selected-options) { border-radius: 0 !important; }
-.multiple-fields-div .field-2 .wf-field-input { border-left: 0 !important; }
-
-/* The hidden inline search input inherits .wf-field-input — undo it. */
-.dropdown-input {
-  border: 0 !important;
-  background: transparent !important;
-  color: #fff !important;
-  padding: 6px 10px !important;
-  min-height: 0 !important;
-}
-.dropdown-input::placeholder { color: rgba(255, 255, 255, 0.25); }
-
-/* ---- 7. COUNTRY MENU.
-   No `top` is set here on purpose: the form's own JS writes an inline
-   top when it flips the menu upward, and !important would break it. ---- */
-.dropdown-menu {
-  background: #141414 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 2px !important;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55) !important;
-  padding: 6px !important;
-}
-.dropdown-menu.dropdown-focus { border-color: rgba(255, 255, 255, 0.12) !important; }
-.dropdown-menu .option {
-  border-bottom: 0 !important;
-  border-radius: 2px;
-  color: #fff;
-  padding: 9px 12px !important;
-  font-size: 13px;
-}
-.dropdown-menu .option:hover { background: rgba(200, 55, 45, 0.16) !important; }
-.dropdown-menu .option[data-selected='true'] {
-  background: rgba(200, 55, 45, 0.20) !important;
-  color: var(--c-red);
-  font-weight: 500 !important;
-}
-.dropdown-menu .no-results { color: rgba(255, 255, 255, 0.35); }
-.dropdown-search-input {
-  width: calc(100% - 12px) !important;
-  margin: 6px !important;
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
-  border-radius: 2px !important;
-  color: #fff !important;
-  padding: 8px 10px !important;
-  font-size: 13px;
-}
-.dropdown-search-input:hover,
-.dropdown-search-input:focus { border: 1px solid rgba(200, 55, 45, 0.50) !important; }
-
-/* ---- 8. TEXTAREA ---- */
-.wf-text-area-input {
-  height: 110px !important;
-  min-height: 110px !important;
-  max-height: 240px !important;
-  resize: none !important;
-  line-height: 1.6;
-}
-
-/* ---- 9. ERRORS ---- */
-.wf-form-component .wf-field-error {
-  text-align: left !important;
-  color: var(--c-err) !important;
-  font-size: 10.5px !important;
-  letter-spacing: 0.1em;
-  margin-top: 6px !important;
-}
-.wf-error-parent-ele { justify-content: flex-start !important; }
-.wf-error-view-more { color: var(--c-red) !important; }
-.wf-field-error-active.wf-field .wf-field-input,
-.wf-field-error-active.wf-field .wf-field-dropdown {
-  border: 1px solid rgba(255, 107, 107, 0.45) !important;
-  border-top: none !important;
-  box-shadow: none !important;
-}
-.wf-field-help-text {
-  color: rgba(255, 255, 255, 0.30) !important;
-  font-size: 10.5px !important;
-}
-
-/* ---- 10. SUBMIT ---- */
-#formsubmit {
-  width: 100% !important;
-  padding: 16px 28px !important;
-  background-color: var(--c-red) !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  color: #fff !important;
-  font-size: 10px !important;
-  font-weight: 500 !important;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.15s ease;
-}
-#formsubmit:hover { background-color: var(--c-red-dark) !important; }
-#formsubmit:active { transform: translateY(1px); }
-#formsubmit:disabled { /* Zoho disables the button once validation passes */
-  opacity: 0.6 !important;
-  cursor: not-allowed;
-  transform: none;
-}
-#formsubmit:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 3px;
-}
-
-/* ---- 11. RESPONSIVE + MOTION ----
-   The breakpoint is 560px, not 760px: this iframe is only as wide as the
-   right-hand panel (~630px on a 1280px page), so a 760px breakpoint would
-   have kept it in one column on every screen. */
-@media screen and (max-width: 560px) {
-  .wf-form-wrapper { grid-template-columns: 1fr; }
-  .wf-form-wrapper > .wf-row:nth-child(7),
-  .wf-form-wrapper > .wf-row:nth-child(8) { grid-column: 1; }
-  #formsubmit { letter-spacing: 0.2em; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .wf-field-input,
-  select.wf-field-dropdown,
-  #formsubmit { transition: none !important; }
-}
-</style>
 <style type='text/css'>
 /* COMMON STYLES */
 :root,
@@ -1241,10 +889,19 @@ width: 100%;
   --c-red-dark: #a82d24;
   --c-line: rgba(255, 255, 255, 0.06);
   --c-field: rgba(255, 255, 255, 0.04);
+  /* Opaque twin of --c-field over the #0c0c0c panel. Used wherever a
+     real colour is needed instead of a translucent one — autofill,
+     native dropdown lists. */
+  --c-field-solid: #161616;
   --c-lbl: rgba(255, 255, 255, 0.30);
   --c-txt: #ffffff;
   --c-err: #ff6b6b;
 }
+
+/* Tells the browser this document is dark, so native UI it draws itself —
+   select popups, scrollbars, the caret, form autofill styling — comes out
+   dark instead of light-on-light. */
+html { color-scheme: dark; }
 
 /* ---- 1. SHELL: fully transparent — the black panel belongs to the
    parent page (.ct-form-wrap), not to this document. ---- */
@@ -1278,6 +935,12 @@ html, body {
 }
 .wf-header { display: none !important; } /* the panel already shows "Tell Us About Your Vision" */
 
+/* Selected text was white-on-near-white by default */
+::selection {
+  background: rgba(200, 55, 45, 0.55);
+  color: #fff;
+}
+
 /* If Zoho's badge shows on your plan, let it sit below the button
    instead of floating over it. */
 .wform-poweredby-container {
@@ -1288,13 +951,17 @@ html, body {
 }
 
 /* ---- 2. LAYOUT: two columns, 3px gutters like the rest of the panel ----
-   Name | Company
-   Mobile | Email
-   Service interested in | Monthly/Project budget
-   When do you want to start?       (full width, row 7)
-   Tell us about your requirement   (full width, row 8)
-   The hidden UTM / pipeline rows are display:none, so they never
-   take up a grid cell. */
+   Row order inside .wf-form-wrapper for THIS form:
+     1  Name              | 2  Company Name
+     3  Mobile            | 4  Email
+     5  Service interested in | 6  Monthly/Project budget
+     7  When do you want to start?       (full width)
+     8  Tell us about your requirement   (full width)
+     9-12 Lead Page URL / UTM Source / UTM Campaign / UTM Content (hidden)
+     13 reCAPTCHA                        (full width)
+     14-16 Sub-Pipeline / Stage / Lead Source (hidden)
+   `display:none` rows are out of the grid flow but STILL COUNT in
+   nth-child(), which is why 13 lands on the captcha. */
 .wf-form-wrapper {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1302,7 +969,8 @@ html, body {
   align-items: start;
 }
 .wf-form-wrapper > .wf-row:nth-child(7),
-.wf-form-wrapper > .wf-row:nth-child(8) {
+.wf-form-wrapper > .wf-row:nth-child(8),
+.wf-form-wrapper > .wf-row:nth-child(13) {
   grid-column: 1 / -1;
 }
 .wf-row {
@@ -1326,6 +994,11 @@ html, body {
   border: 1px solid var(--c-line);
   border-bottom: none;
   padding: 10px 16px 0 !important;
+}
+/* The captcha row ships an empty label — without this it draws a bare
+   bordered stripe above the widget. */
+.wf-label:empty {
+  display: none !important;
 }
 .wf-row:has(.wf-field-mandatory) .wf-label::after {
   content: ' *';
@@ -1357,13 +1030,51 @@ select.wf-field-dropdown:focus {
   box-shadow: none !important;
   outline: none;
 }
-/* Chrome autofill would otherwise paint a white box over the dark field */
-.wf-field-input:-webkit-autofill,
-.wf-field-input:-webkit-autofill:hover,
-.wf-field-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #fff;
-  -webkit-box-shadow: 0 0 0 1000px #141414 inset;
-  caret-color: #fff;
+
+/* ---- 4b. AUTOFILL ----
+   Chrome paints saved values with its own opaque wash (the pale blue box)
+   from a UA rule, and re-paints it on hover/focus/active — which on a dark
+   panel leaves white text on near-white. Three things are needed together:
+
+     · the inset box-shadow, which is the only way to repaint that area
+       (background-color is locked by the UA sheet);
+     · -webkit-text-fill-color, since `color` alone is also overridden;
+     · the absurd transition delay, which stops newer Chrome re-running the
+       wash animation when the field is focused or hovered.
+
+   All of it needs !important to outrank the UA rule — that was the bug.
+   Every state is listed explicitly because Chrome treats them separately. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--c-field-solid) inset !important;
+  box-shadow: 0 0 0 1000px var(--c-field-solid) inset !important;
+  -webkit-text-fill-color: var(--c-txt) !important;
+  color: var(--c-txt) !important;
+  caret-color: var(--c-txt) !important;
+  transition: background-color 100000s ease-in-out 0s !important;
+}
+/* Focused autofilled field keeps the same faint red tint as a normal one */
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #1c1414 inset !important;
+  box-shadow: 0 0 0 1000px #1c1414 inset !important;
+}
+/* Firefox and the standardised selector */
+input:autofill,
+textarea:autofill,
+select:autofill {
+  filter: none; /* Firefox tints autofilled fields via filter */
+  -webkit-text-fill-color: var(--c-txt) !important;
+  color: var(--c-txt) !important;
+  background: var(--c-field-solid) !important;
 }
 
 /* ---- 5. SELECTS ---- */
@@ -1379,7 +1090,10 @@ select.wf-field-dropdown {
    class on an inner div and is restyled in section 6 instead. */
 .wf-field-inner.dropdown-contents::after { display: none !important; }
 select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 255, 255, 0.35) !important; }
-.wf-form-component option { background: #0c0c0c; color: #fff; }
+.wf-form-component option {
+  background: var(--c-field-solid);
+  color: #fff;
+}
 
 /* ---- 6. PHONE: dial-code box + number share the one field box ---- */
 .multiple-fields-div.flex-1-5 .field-1 { flex: 0 0 96px !important; }
@@ -1486,7 +1200,29 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
   font-size: 10.5px !important;
 }
 
-/* ---- 10. SUBMIT ---- */
+/* ---- 10. reCAPTCHA ----
+   Google's widget is a fixed ~302x76 iframe it paints itself, so the only
+   thing we can do from here is give it a matching frame and keep it from
+   overflowing the panel. The widget's own colours come from
+   data-theme='dark' on the .g-recaptcha div in the markup below — that
+   attribute, not CSS, is what makes the box black. */
+.wf-row[data-ux-field-appearance='recaptcha'] {
+  margin-top: 3px;
+}
+.wf-row[data-ux-field-appearance='recaptcha'] .wf-field-inner {
+  display: block !important;
+  background: var(--c-field);
+  border: 1px solid var(--c-line);
+  padding: 14px 16px;
+}
+.wf-row[data-ux-field-appearance='recaptcha'] .g-recaptcha {
+  transform-origin: left top;
+}
+.wf-row[data-ux-field-appearance='recaptcha'] .wf-field-error {
+  margin-top: 8px !important;
+}
+
+/* ---- 11. SUBMIT ---- */
 #formsubmit {
   width: 100% !important;
   padding: 16px 28px !important;
@@ -1513,12 +1249,26 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
   outline-offset: 3px;
 }
 
-/* ---- 11. RESPONSIVE + MOTION ---- */
-@media screen and (max-width: 760px) {
+/* ---- 12. RESPONSIVE + MOTION ----
+   The breakpoint is 560px, not 760px: this iframe is only as wide as the
+   right-hand panel (~630px on a 1280px page), so a 760px breakpoint would
+   have kept it in one column on every screen. */
+@media screen and (max-width: 560px) {
   .wf-form-wrapper { grid-template-columns: 1fr; }
   .wf-form-wrapper > .wf-row:nth-child(7),
-  .wf-form-wrapper > .wf-row:nth-child(8) { grid-column: 1; }
+  .wf-form-wrapper > .wf-row:nth-child(8),
+  .wf-form-wrapper > .wf-row:nth-child(13) { grid-column: 1; }
   #formsubmit { letter-spacing: 0.2em; }
+}
+/* The captcha box can't reflow, so shrink it rather than let it push a
+   horizontal scrollbar into the panel. */
+@media screen and (max-width: 380px) {
+  .wf-row[data-ux-field-appearance='recaptcha'] .g-recaptcha {
+    transform: scale(0.85);
+  }
+  .wf-row[data-ux-field-appearance='recaptcha'] .wf-field-inner {
+    padding: 14px 10px 4px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .wf-field-input,
@@ -1529,19 +1279,19 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 </head>
 <body>
 
-<div class='wf-parent'  id='BiginWebToRecordFormParent7522188000000639254' style='background-color: #EAEEF2'>
-<div class='wf-wrapper' id='BiginWebToRecordFormDiv7522188000000639254'>
+<div class='wf-parent'  id='BiginWebToRecordFormParent7522188000000623170' style='background-color: #EAEEF2'>
+<div class='wf-wrapper' id='BiginWebToRecordFormDiv7522188000000623170'>
 <meta name='viewport' content='width=device-width, initial-scale=1.0'>
 <META HTTP-EQUIV='content-type' CONTENT='text/html;charset=UTF-8'>
-<form id='BiginWebToRecordForm7522188000000639254' name='BiginWebToRecordForm7522188000000639254' class='wf-form-component' data-ux-form-alignment='top' style='font-family: Arial;position: relative;font-size:15px;' method='POST' enctype='multipart/form-data' onSubmit='javascript:document.charset="UTF-8"; return validateForm7522188000000639254()' accept-charset='UTF-8'>
+<form id='BiginWebToRecordForm7522188000000623170' name='BiginWebToRecordForm7522188000000623170' class='wf-form-component' data-ux-form-alignment='top' style='font-family: Arial;position: relative;font-size:15px;' method='POST' enctype='multipart/form-data' onSubmit='javascript:document.charset="UTF-8"; return validateForm7522188000000623170()' accept-charset='UTF-8'>
 <!-- Do not remove this code. -->
-<input type='text' style='display:none;' name='xnQsjsdp' value='02c968b7a944c9b62a557ab89f5d5af9aa2368d873db16baa0b917eace765312'/>
+<input type='text' style='display:none;' name='xnQsjsdp' value='98ea7a89a13df0f9f658580a9c875ee0d21ba946b68372ddf0da4593eef8fd0d'/>
 <input type='hidden' name='zc_gad' id='zc_gad' value=''/>
-<input type='text' style='display:none;' name='xmIwtLD' value='4c114c3a8f05e6c49db3b02d6c880c8a0895a98f5c56091f114c0840fe253a017556f596a0fe7b09a643bfd0ee3b1ce8'/>
+<input type='text' style='display:none;' name='xmIwtLD' value='81a6928171067053d2d0cf6ca3a3a766a669f320f445ceae5ed81fcabe8440f54d3dee36d6eeb852887b36e4cbe363b7'/>
 <input type='text' style='display:none;' name='actionType' value='UG90ZW50aWFscw=='/>
 <input type='text' style='display:none;' name='returnURL' value='null' />
-<div class='wf-header'>2151 Get Quote</div>
-<div id='elementDiv7522188000000639254' class='wf-form-wrapper'>
+<div class='wf-header'>MS Get Quote</div>
+<div id='elementDiv7522188000000623170' class='wf-form-wrapper'>
 <div class='wf-row'> 
 <div class='wf-label'>Name</div>
 <div class='wf-field wf-field-mandatory'>
@@ -1551,7 +1301,7 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 </div>
 </div>
 <div class='wf-row'> 
-<div class='wf-label'>Company</div>
+<div class='wf-label'>Company Name</div>
 <div class='wf-field wf-field-mandatory'>
 <div class='wf-field-inner'>
 <input name='Accounts.Account Name' maxlength='200' type='text' value='' class='wf-field-item wf-field-input' oninput='removeError(this)'/>
@@ -1562,7 +1312,7 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 <div class='wf-label'>Mobile</div>
 <div class='wf-field wf-field-mandatory ux-pick-mixed multiple-fields-div flex-1-5'>
 <div class='wf-field-inner'>
-<div id='phContacts___Mobile' class='multiselect wf-field-dropdown field-1 dropdown-with-search icon-with-text-dropdown single-select-drp' onclick='removeError(this); showDropDown7522188000000639254(this)' isPhone='true' findIP='true' >
+<div id='phContacts___Mobile' class='multiselect wf-field-dropdown field-1 dropdown-with-search icon-with-text-dropdown single-select-drp' onclick='removeError(this); showDropDown7522188000000623170(this)' isPhone='true' findIP='true' >
 <div class='selected-options hide-opt-list wf-field-item selected-options-field' style='display:none;'></div>
 <div class='dropdown flex-center-v dropdown-contents'>
 <input type='text' class='dropdown-input input-not-active wf-field-item wf-field-input' style='display:none;' />
@@ -1573,7 +1323,7 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 <div class='field-2'>
 <div class=''>
 <input maxlength='30' type='text' value='' class='wf-field-item wf-field-input' oninput='removeError(this)'/>
-<input ftype='dialcode' name='Contacts.Mobile' maxlength='30' type='text' style='display:none;'/>
+<input ftype='dialcode' name='Contacts.Mobile' maxlength='30' type='text' style='display:none;' rest_alpha='true'/>
 </div>
 </div>
 </div>
@@ -1605,7 +1355,7 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 </div>
 <div class='wf-row'> 
 <div class='wf-label'>Monthly/Project Budget</div>
-<div class='wf-field wf-field-mandatory'>
+<div class='wf-field'>
 <div class='wf-field-inner dropdown-contents'>
 <select name='POTENTIALCF3' class='wf-field-item wf-field-dropdown' data-wform-field='select' onchange='removeError(this);'>
 <option value='-None-'>-None-</option>
@@ -1641,26 +1391,17 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 </div>
 </div>
 <!-- ===========================================================
-     These four fields are populated automatically (see the
-     postMessage listener near the end of this file, which fills
-     them in from the parent page's tracking data) and are not
-     something a visitor should ever need to see or type into —
-     hidden exactly the way Sub-Pipeline / Stage / Lead Source
-     already are below.
+     CHANGED FROM THE BIGIN SOURCE: these four rows ship visible in
+     the hosted form. They are populated automatically by the
+     postMessage listener at the end of this file (from the parent
+     page's tracking data), so they are hidden here — a visitor
+     should never see or type into them.
      =========================================================== -->
 <div class='wf-row' style='display:none;'> 
 <div class='wf-label'>Lead Page URL</div>
 <div class='wf-field'>
 <div class='wf-field-inner'>
 <input name='POTENTIALCF4' maxlength='255' type='text' value='' class='wf-field-item wf-field-input' oninput='removeError(this)'/>
-</div>
-</div>
-</div>
-<div class='wf-row' style='display:none;'> 
-<div class='wf-label'>UTM Campaign</div>
-<div class='wf-field'>
-<div class='wf-field-inner'>
-<input name='POTENTIALCF7' maxlength='255' type='text' value='' class='wf-field-item wf-field-input' oninput='removeError(this)'/>
 </div>
 </div>
 </div>
@@ -1673,10 +1414,28 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 </div>
 </div>
 <div class='wf-row' style='display:none;'> 
+<div class='wf-label'>UTM Campaign</div>
+<div class='wf-field'>
+<div class='wf-field-inner'>
+<input name='POTENTIALCF7' maxlength='255' type='text' value='' class='wf-field-item wf-field-input' oninput='removeError(this)'/>
+</div>
+</div>
+</div>
+<div class='wf-row' style='display:none;'> 
 <div class='wf-label'>UTM Content</div>
 <div class='wf-field'>
 <div class='wf-field-inner'>
 <input name='POTENTIALCF6' maxlength='255' type='text' value='' class='wf-field-item wf-field-input' oninput='removeError(this)'/>
+</div>
+</div>
+</div>
+<!-- data-theme was 'light' in the Bigin source; 'dark' is the only
+     change here, so the widget matches the black panel. -->
+<div class='wf-row' data-ux-field-appearance='recaptcha'> 
+<div class='wf-label'></div>
+<div class='wf-field'>
+<div class='wf-field-inner'>
+<div class='g-recaptcha' data-sitekey='6LdFqIQtAAAAAO8ZlutxG0RSjH__U8T2ycZiHjD5' data-theme='dark' data-callback='rccallback7522188000000623170' data-expired-callback='rcexpcallback7522188000000623170' captcha-verified='false' id='recap7522188000000623170'></div>
 </div>
 </div>
 </div>
@@ -1685,7 +1444,7 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 <div class='wf-field wf-field-mandatory'>
 <div class='wf-field-inner dropdown-contents'>
 <select name='Pipeline' class='wf-field-item wf-field-dropdown' data-wform-field='select' onchange='removeError(this);'>
-<option selected value='Sales Pipeline Standard 2'>Sales Pipeline Standard 2</option>
+<option selected value='Sales Pipeline Standard'>Sales Pipeline Standard</option>
 </select>
 </div>
 </div>
@@ -1701,6 +1460,12 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 <option value='Negotiation/Review'>Negotiation/Review</option>
 <option value='Closed Won'>Closed Won</option>
 <option value='Closed Lost'>Closed Lost</option>
+<option value='Opportunity Identified'>Opportunity Identified</option>
+<option value='Discussed'>Discussed</option>
+<option value='Proposal Sent'>Proposal Sent</option>
+<option value='Follow-up'>Follow-up</option>
+<option value='Approved'>Approved</option>
+<option value='Rejected'>Rejected</option>
 <option value='Junk'>Junk</option>
 </select>
 </div>
@@ -1712,6 +1477,9 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 <div class='wf-field-inner dropdown-contents'>
 <select name='Lead Source' class='wf-field-item wf-field-dropdown' data-wform-field='select' onchange='removeError(this);'>
 <option value='-None-'>-None-</option>
+<option value='Meta Ads'>Meta Ads</option>
+<option value='Google Ads'>Google Ads</option>
+<option value='WhatsApp Campaign'>WhatsApp Campaign</option>
 <option value='Advertisement'>Advertisement</option>
 <option value='Cold Call'>Cold Call</option>
 <option value='Employee Referral'>Employee Referral</option>
@@ -1726,9 +1494,6 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 <option value='Web Download'>Web Download</option>
 <option value='Web Research'>Web Research</option>
 <option value='Chat'>Chat</option>
-<option value='Google Ads'>Google Ads</option>
-<option value='WhatsApp Campaign'>WhatsApp Campaign</option>
-<option value='Meta Ads'>Meta Ads</option>
 <option selected value='Official Website'>Official Website</option>
 <option value='WhatsApp Organic'>WhatsApp Organic</option>
 <option value='WHATSAPP - Mindstory Digital Partner'>WHATSAPP - Mindstory Digital Partner</option>
@@ -1743,12 +1508,14 @@ select.wf-field-dropdown:has(option[value='-None-']:checked) { color: rgba(255, 
 </form>
 </div>
 </div>
+<script src='https://www.google.com/recaptcha/api.js' async defer></script>
+
 <script>
-  var mndFields7522188000000639254=new Array('Potential Name','Accounts.Account Name','Contacts.Mobile','Contacts.Email','POTENTIALCF1','POTENTIALCF3','POTENTIALCF2','Description');
-  var fldLangVal7522188000000639254=new Array('Name','Company','Mobile','Email','Service Interested In?','Monthly/Project Budget','When do you want to start?','Tell Us About Your Requirement');
+  var mndFields7522188000000623170=new Array('Potential Name','Accounts.Account Name','Contacts.Mobile','Contacts.Email','POTENTIALCF1','POTENTIALCF2','Description');
+  var fldLangVal7522188000000623170=new Array('Name','Company Name','Mobile','Email','Service Interested In?','When do you want to start?','Tell Us About Your Requirement');
 var wfInnerWidth = window.innerWidth;
 if(wfInnerWidth <= 768){
-document.forms['BiginWebToRecordForm7522188000000639254'].setAttribute('data-ux-form-alignment', 'top');
+document.forms['BiginWebToRecordForm7522188000000623170'].setAttribute('data-ux-form-alignment', 'top');
 }
 function removeError(fieldObj) {
 var parentElement = fieldObj.closest('.wf-field'),
@@ -1784,9 +1551,9 @@ spanEle.classList.remove('wf-field-error-long')
 }
 }
 }
-function validateFields7522188000000639254() {
+function validateFields7522188000000623170() {
 var isReturn = true;
-var form = document.forms['BiginWebToRecordForm7522188000000639254'];
+var form = document.forms['BiginWebToRecordForm7522188000000623170'];
 var validateFld = form.querySelectorAll('[fvalidate=true]');
 var i;
 for (i = 0; i < validateFld.length; i++)
@@ -1849,7 +1616,29 @@ break;
 }
 return isReturn;
 }
-function showDropDown7522188000000639254(_c){
+function validateReCaptcha7522188000000623170() {
+var recapEle = document.getElementById('recap7522188000000623170');
+if(recapEle !=undefined && recapEle.getAttribute('captcha-verified') == 'false')
+{
+setError(recapEle, 'Please check the reCAPTCHA box before submitting the form.');
+return false;
+}
+return true;
+}
+function rccallback7522188000000623170() {
+var recapEle = document.getElementById('recap7522188000000623170');
+if(recapEle !=undefined){
+recapEle.setAttribute('captcha-verified',true);
+removeError(recapEle);
+}
+}
+function rcexpcallback7522188000000623170() {
+var recapEle = document.getElementById('recap7522188000000623170');
+if(recapEle !=undefined){
+recapEle.setAttribute('captcha-verified',false);
+}
+}
+function showDropDown7522188000000623170(_c){
 var _dd = _c.getElementsByClassName('dropdown')[0],
 _ddInput = _c.getElementsByClassName('dropdown-input')[0],
 ddM = _c.querySelector('.dropdown-menu'),
@@ -1983,7 +1772,7 @@ return false;
 }
 }
 }
-function createDropdownOptions7522188000000639254(eleID, optionsData, sOpt) {
+function createDropdownOptions7522188000000623170(eleID, optionsData, sOpt) {
 var eleDiv = document.getElementById(eleID),
 _dd = eleDiv.getElementsByClassName('dropdown')[0],
 _ddM = eleDiv.querySelector('.dropdown-menu'),
@@ -2106,7 +1895,7 @@ if(closeDD.closest('.wf-field-inner').classList.contains('no-results-elem')) {
 closeDD.closest('.wf-field-inner').classList.remove('no-results-elem');
 closeDD.closest('.wf-field-inner').querySelector('.multiselect').classList.remove('no-results-elem');
 }
-createDropdownOptions7522188000000639254(eleID, optionsData, sOpt);
+createDropdownOptions7522188000000623170(eleID, optionsData, sOpt);
 });
 optionContainer.appendChild(removeButton);
 _sOpt.appendChild(optionContainer);
@@ -2114,15 +1903,15 @@ _sOpt.appendChild(optionContainer);
 });
 _ddInput.value = '';
 _ddInput.focus();
-createDropdownOptions7522188000000639254(eleID, optionsData, sOpt);
+createDropdownOptions7522188000000623170(eleID, optionsData, sOpt);
 }
 document.querySelectorAll('.dropdown-input').forEach(function(ddEle) {
 ddEle.addEventListener('input', function (ele) {
 handleSearchForDropdown(ele.srcElement,'.dropdown-menu');
 });
 });
-function validateMultiPick7522188000000639254() {
-var form = document.forms['BiginWebToRecordForm7522188000000639254'],
+function validateMultiPick7522188000000623170() {
+var form = document.forms['BiginWebToRecordForm7522188000000623170'],
 isReturn = true;
 form.querySelectorAll('[multipick=true]').forEach(function(multiPickEle){
 var optionsA = window['sopt'+multiPickEle.name],
@@ -2266,8 +2055,8 @@ index++;
 }
 return optionTag;
 }
-function validatePhone7522188000000639254() {
-var form = document.forms['BiginWebToRecordForm7522188000000639254'],
+function validatePhone7522188000000623170() {
+var form = document.forms['BiginWebToRecordForm7522188000000623170'],
 isReturn = true;
 form.querySelectorAll('[ftype=dialcode]').forEach(function(phoneEle){
 var dialCode = countries.find(({iso}) => iso === window['ph'+phoneEle.name.replaceAll('.', '___').replaceAll(' ', '___')+'Code']).dial,
@@ -2292,11 +2081,11 @@ phoneEle.value = dialCode + phoneEle.previousElementSibling.value;
 return isReturn;
 }
 
-function checkMandatory7522188000000639254() {
+function checkMandatory7522188000000623170() {
 var isReturn = true;
 var isNotCaptcha = false;
-for(i=0;i<mndFields7522188000000639254.length;i++) {
-  var fieldObj=document.forms['BiginWebToRecordForm7522188000000639254'][mndFields7522188000000639254[i]];
+for(i=0;i<mndFields7522188000000623170.length;i++) {
+  var fieldObj=document.forms['BiginWebToRecordForm7522188000000623170'][mndFields7522188000000623170[i]];
   if(fieldObj) {
 if (((fieldObj.value).replace(/^\s+|\s+$/g, '')).length==0) {
 if(fieldObj.type =='file'){
@@ -2305,30 +2094,31 @@ isReturn = false;
 }
 else if(fieldObj.getAttribute('ftype') === 'dialcode'){
 if(fieldObj.previousElementSibling && fieldObj.previousElementSibling.value === '') {
-setError(fieldObj.previousElementSibling, fldLangVal7522188000000639254[i] + ' cannot be empty');
+setError(fieldObj.previousElementSibling, fldLangVal7522188000000623170[i] + ' cannot be empty');
 isReturn = false;
 }
 }
 else {
-setError(fieldObj, fldLangVal7522188000000639254[i] + ' cannot be empty');
+setError(fieldObj, fldLangVal7522188000000623170[i] + ' cannot be empty');
 isReturn= false;
 }
 }  else if(fieldObj.nodeName=='SELECT') {
 if(fieldObj.options[fieldObj.selectedIndex].value=='-None-') {
-setError(fieldObj, fldLangVal7522188000000639254[i] +' cannot be none.');
+setError(fieldObj, fldLangVal7522188000000623170[i] +' cannot be none.');
 isReturn = false;
    }
 } else if(fieldObj.type =='checkbox'){
 if(fieldObj.checked == false){
-setError(fieldObj, 'Please accept  '+fldLangVal7522188000000639254[i]);
+setError(fieldObj, 'Please accept  '+fldLangVal7522188000000623170[i]);
 isReturn= false;
 }
 }
     }
 }
 isNotCaptcha = true;
-if(!validateFields7522188000000639254()){isReturn = false;}
-if(!validatePhone7522188000000639254()){isReturn = false;}
+if(!validateReCaptcha7522188000000623170()){isReturn = false;}
+if(!validateFields7522188000000623170()){isReturn = false;}
+if(!validatePhone7522188000000623170()){isReturn = false;}
 if(!isReturn){
 var errEle = document.getElementsByClassName('wf-field-error');
 if(errEle && errEle.length >0){
@@ -2370,7 +2160,7 @@ setSelectedOption(ele.querySelector('[iso=' + window[ele.id + 'Code'] + ']'), el
 });
 }
 </script>
-<script id='wf_script' src='https://bigin.zoho.com/crm/WebformScriptServlet?rid=4c114c3a8f05e6c49db3b02d6c880c8a0895a98f5c56091f114c0840fe253a017556f596a0fe7b09a643bfd0ee3b1ce8gid02c968b7a944c9b62a557ab89f5d5af9aa2368d873db16baa0b917eace765312&findip=true' onload=setupPhoneFldIP()></script>
+<script id='wf_script' src='https://bigin.zoho.com/crm/WebformScriptServlet?rid=81a6928171067053d2d0cf6ca3a3a766a669f320f445ceae5ed81fcabe8440f54d3dee36d6eeb852887b36e4cbe363b7gid98ea7a89a13df0f9f658580a9c875ee0d21ba946b68372ddf0da4593eef8fd0d&findip=true' onload=setupPhoneFldIP()></script>
 <!-- end verbatim Bigin markup -->
 
 <script>
@@ -2413,7 +2203,7 @@ setSelectedOption(ele.querySelector('[iso=' + window[ele.id + 'Code'] + ']'), el
   // Fills the hidden `returnURL` field right before Zoho's own submit
   // handler runs, so a successful enquiry redirects to THIS site's own
   // /thank-you page instead of Zoho's default response — e.g.
-  //   https://21fiftyone.com/thank-you?name=Jishnu+Mindstory&service=Visual+Production&from=contact
+  //   https://21fiftyone.com/thank-you?name=Jishnu+Mindstory&service=Video+Production&from=contact
   // `from=contact` is the only difference from get-quote.html: it's what
   // lets the thank-you page tell the two forms apart.
   // Because this file is served same-origin from the Next.js site,
@@ -2421,7 +2211,7 @@ setSelectedOption(ele.querySelector('[iso=' + window[ele.id + 'Code'] + ']'), el
   // 21fiftyone.com in production, so nothing here needs to change
   // between environments.
   (function () {
-    var FORM_ID = 'BiginWebToRecordForm7522188000000639254';
+    var FORM_ID = 'BiginWebToRecordForm7522188000000623170';
 
     function urlEncode(value) {
       // application/x-www-form-urlencoded style: spaces as "+"
@@ -2457,13 +2247,14 @@ setSelectedOption(ele.querySelector('[iso=' + window[ele.id + 'Code'] + ']'), el
   // can swap the panel for its "Message Received" state.
   //
   // Zoho disables #formsubmit only inside checkMandatory...() after every
-  // check has passed, so reading `disabled` on the next tick distinguishes
-  // a real send from a submit that was blocked by a validation error.
+  // check has passed — including the reCAPTCHA check on this form — so
+  // reading `disabled` on the next tick distinguishes a real send from a
+  // submit that was blocked by a validation error or an unticked captcha.
   //
   // Contact.tsx listens for { type: 'bigin-submitted' }. If nothing is
   // listening this is a no-op and the form still works standalone.
   (function () {
-    var form = document.getElementById('BiginWebToRecordForm7522188000000639254');
+    var form = document.getElementById('BiginWebToRecordForm7522188000000623170');
     if (!form || !window.parent || window.parent === window) return;
     form.addEventListener('submit', function () {
       setTimeout(function () {
@@ -2484,7 +2275,8 @@ setSelectedOption(ele.querySelector('[iso=' + window[ele.id + 'Code'] + ']'), el
   //
   // The parent (GetQuoteForm.tsx) listens for { type: 'bigin-height', height }.
   // If it isn't listening, nothing here has any effect — the form still works
-  // standalone.
+  // standalone. The MutationObserver also catches the reCAPTCHA widget
+  // appearing, which adds ~105px once the Google script loads.
   (function () {
     var lastSent = 0;
 
@@ -2510,20 +2302,21 @@ setSelectedOption(ele.querySelector('[iso=' + window[ele.id + 'Code'] + ']'), el
       window.parent.postMessage({ type: 'bigin-height', height: h }, '*');
     }
 
-    // Initial + after fonts/wf_script settle.
+    // Initial + after fonts / wf_script / recaptcha settle.
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', send);
     } else {
       send();
     }
     window.addEventListener('load', send);
-    [100, 400, 1200, 2500].forEach(function (t) { setTimeout(send, t); });
+    [100, 400, 1200, 2500, 4000].forEach(function (t) { setTimeout(send, t); });
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(send).catch(function () {});
     }
 
-    // Anything that changes the layout: validation errors appearing, the
-    // textarea being dragged, the country menu opening, a viewport resize.
+    // Anything that changes the layout: the reCAPTCHA box rendering or its
+    // challenge overlay opening, validation errors appearing, the country
+    // menu opening, a viewport resize.
     if (window.ResizeObserver) {
       new ResizeObserver(send).observe(document.documentElement);
     } else {
