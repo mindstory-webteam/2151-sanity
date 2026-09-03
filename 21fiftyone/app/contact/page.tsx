@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 
 import About1 from "@/component/About1";
 import AboutSection from "@/component/Aboutsection";
@@ -29,6 +30,23 @@ const SOCIAL_ITEMS = [
 ];
 
 import Image from "next/image";
+
+export const metadata: Metadata = {
+  title: "Contact 21FiftyOne | Video Production Company in Kozhikode",
+  description:
+    "Get in touch with 21FiftyOne for video production, corporate films, commercials, AI content, brand storytelling and creative production services in Kozhikode.",
+  alternates: {
+    canonical: "https://21fiftyone.com/contact",
+  },
+  openGraph: {
+    title: "Contact 21FiftyOne | Video Production Company in Kozhikode",
+    description:
+      "Get in touch with 21FiftyOne for video production, corporate films, commercials, AI content, brand storytelling and creative production services in Kozhikode.",
+    url: "https://21fiftyone.com/contact",
+    siteName: "21FiftyOne",
+    type: "website",
+  },
+};
 
 export default function Home() {
   return (
