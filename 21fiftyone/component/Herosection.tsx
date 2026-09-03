@@ -227,6 +227,7 @@ export default function Hero() {
           display:block !important;
         }
         .d-ghost {
+          display:block;
           font-family:'Anton',sans-serif;
           font-size:clamp(72px,10vw,148px);
           line-height:.84; letter-spacing:-.02em; text-transform:uppercase;
@@ -331,9 +332,9 @@ export default function Hero() {
             </div>
 
             <div className="hero-heading">
-              <h1 className="d-h1 hero-text-item">{slide.line1}</h1>
-              <h1 className="d-h1 hero-text-item">{slide.line2}</h1>
-              <h1 className="d-h1-accent hero-text-item">{slide.accent}</h1>
+              <span className="d-h1 hero-text-item">{slide.line1}</span>
+              <span className="d-h1 hero-text-item">{slide.line2}</span>
+              <span className="d-h1-accent hero-text-item">{slide.accent}</span>
             </div>
 
             <div className="hero-body">
@@ -376,7 +377,7 @@ export default function Hero() {
 
         </div>
 
-        <h1 className="d-ghost d-ghost-dark" style={{ position: "absolute", bottom: 16, right: 16 }}>21FIFTYONE</h1>
+        <span className="d-ghost d-ghost-dark" style={{ position: "absolute", bottom: 16, right: 16 }}>21FIFTYONE</span>
       </div>
     </>
   );
