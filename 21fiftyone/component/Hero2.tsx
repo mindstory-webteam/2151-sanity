@@ -408,10 +408,10 @@ export default function Hero2() {
       <section className="hero2" ref={sectionRef}>
 
         {/* Top label bar */}
-        <div className="hero2-top-bar">
+        {/* <div className="hero2-top-bar">
           <span className="hero2-studio-label">21FiftyOne Studio</span>
           <span className="hero2-year-label">21FIFTYONE</span>
-        </div>
+        </div> */}
 
         <div className="hero2-inner">
 

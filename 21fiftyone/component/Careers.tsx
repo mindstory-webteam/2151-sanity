@@ -1,186 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
-import { motion, useAnimation } from "framer-motion";
-
-type AnimationControls = ReturnType<typeof useAnimation>;
-import type { ElementType, CSSProperties } from "react";
+import { useEffect, useRef } from "react";
+import { motion } from "framer-motion";
 import Link from "next/link";
+import React from "react";
 
 /* ════════════════════════════════════════════════════════
-   TEXT ROLL — auto + hover (self-contained, no imports)
+   ROLL BUTTON — plain label, hover background/color only
 ════════════════════════════════════════════════════════ */
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger);
-
-const ROLL_STAGGER = 0.035;
-function getRollDelay(i: number, total: number, dir: "left" | "right" | "center") {
-  if (dir === "center") return ROLL_STAGGER * Math.abs(i - (total - 1) / 2);
-  if (dir === "right")  return ROLL_STAGGER * (total - 1 - i);
-  return ROLL_STAGGER * i;
-}
-
-const TextRollChar = ({ char, delay, duration, controls }: { char: string; delay: number; duration: number; controls: AnimationControls }) => {
-  const ch = char === " " ? "\u00A0" : char;
-  return (
-    <span style={{ display:"inline-block", position:"relative", overflow:"hidden", lineHeight:0.88, verticalAlign:"top" }}>
-      <motion.span style={{ display:"block" }} animate={controls} variants={{
-        idle:    { y:"0%",    transition:{ ease:"easeInOut", duration:duration/1000, delay } },
-        rolling: { y:"-100%", transition:{ ease:"easeInOut", duration:duration/1000, delay } },
-        reset:   { y:"100%",  transition:{ duration:0 } },
-      }}>{ch}</motion.span>
-      <motion.span aria-hidden style={{ display:"block", position:"absolute", inset:0, whiteSpace:"pre" }} animate={controls} variants={{
-        idle:    { y:"100%",  transition:{ ease:"easeInOut", duration:duration/1000, delay } },
-        rolling: { y:"0%",    transition:{ ease:"easeInOut", duration:duration/1000, delay } },
-        reset:   { y:"200%",  transition:{ duration:0 } },
-      }}>{ch}</motion.span>
-    </span>
-  );
-};
-
-const TextRoll = ({ children, direction="left", autoRoll=false, autoRollInterval=2500, autoRollDuration=400 }:
-  { children: string; direction?: "left"|"right"|"center"; autoRoll?: boolean; autoRollInterval?: number; autoRollDuration?: number }) => {
-  const chars    = children.split("");
-  const controls = useAnimation();
-  const hovering = useRef(false);
-  const rolling  = useRef(false);
-  const doRoll   = useCallback(async () => {
-    if (rolling.current) return;
-    rolling.current = true;
-    await controls.start("rolling");
-    await controls.start("reset");
-    await controls.start("idle");
-    rolling.current = false;
-  }, [controls]);
-  useEffect(() => {
-    if (!autoRoll) return;
-    const id = setInterval(() => { if (!hovering.current) doRoll(); }, autoRollInterval);
-    return () => clearInterval(id);
-  }, [autoRoll, autoRollInterval, doRoll]);
-  return (
-    <span onMouseEnter={() => { hovering.current=true; doRoll(); }} onMouseLeave={() => { hovering.current=false; }}
-      style={{ display:"inline-flex", cursor:"pointer", userSelect:"none", verticalAlign:"top" }}>
-      {chars.map((ch, i) => <TextRollChar key={i} char={ch} controls={controls} delay={getRollDelay(i,chars.length,direction)} duration={autoRollDuration} />)}
-    </span>
-  );
-};
-
-/* ════════════════════════════════════════════════════════
-   SPLIT TEXT
-════════════════════════════════════════════════════════ */
-type FromTo = { opacity?:number; y?:number; x?:number; scale?:number; rotation?:number; skewX?:number; [k:string]:number|undefined };
-interface SplitTextProps {
-  text:string; className?:string; delay?:number; duration?:number; ease?:string;
-  splitType?:"chars"|"words"|"lines"; from?:FromTo; to?:FromTo;
-  threshold?:number; rootMargin?:string; textAlign?:CSSProperties["textAlign"];
-  onLetterAnimationComplete?:()=>void; showCallback?:boolean; tag?:ElementType;
-  hoverRoll?:boolean; hoverRollDirection?:"left"|"right"|"center";
-  autoRoll?:boolean; autoRollInterval?:number; autoRollDuration?:number;
-}
-
-function HoverRollSplitText({ text,className="",delay=50,duration=1.25,ease="power3.out",splitType="chars",
-  from={opacity:0,y:40},to={opacity:1,y:0},threshold=0.1,rootMargin="-100px",textAlign="left",
-  onLetterAnimationComplete,showCallback=false,hoverRollDirection="left",
-  autoRoll=false,autoRollInterval=2500,autoRollDuration=400 }: SplitTextProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const unitRefs     = useRef<(HTMLSpanElement|null)[]>([]);
-  const tlRef        = useRef<gsap.core.Timeline|null>(null);
-  const units = splitType==="chars" ? text.split("") : splitType==="words" ? text.split(" ") : text.split("\n");
-
-  useEffect(() => {
-    const container = containerRef.current;
-    const targets   = unitRefs.current.filter(Boolean) as HTMLSpanElement[];
-    if (!container || !targets.length) return;
-    gsap.set(targets, { ...from });
-    tlRef.current = gsap.timeline({ paused:true, onComplete:()=>{ if(showCallback&&onLetterAnimationComplete) onLetterAnimationComplete(); } });
-    tlRef.current.to(targets, { ...to, duration, ease, stagger:delay/1000 });
-    const io = new IntersectionObserver((entries) => entries.forEach(e => { if(e.isIntersecting){tlRef.current?.play();io.unobserve(container);} }), { threshold, rootMargin });
-    io.observe(container);
-    return () => { io.disconnect(); tlRef.current?.kill(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text]);
-
-  return (
-    <div ref={containerRef} className={className} aria-label={text}
-      style={{ textAlign, lineHeight:"inherit", display:"flex", flexWrap:"wrap", gap:splitType==="chars"?"0":"0.2em" }}>
-      {units.map((unit, i) => {
-        if (unit===" " && splitType==="chars") return <span key={i} ref={el=>{unitRefs.current[i]=el;}} style={{display:"inline-block"}}>&nbsp;</span>;
-        return (
-          <span key={i} ref={el=>{unitRefs.current[i]=el;}} style={{display:"inline-block"}}>
-            <TextRoll direction={hoverRollDirection} autoRoll={autoRoll} autoRollInterval={autoRollInterval+i*150} autoRollDuration={autoRollDuration}>{unit}</TextRoll>
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-function StandardSplitText({ text,className="",delay=50,duration=1.25,ease="power3.out",splitType="chars",
-  from={opacity:0,y:40},to={opacity:1,y:0},threshold=0.1,rootMargin="-100px",textAlign="left",
-  onLetterAnimationComplete,showCallback=false,tag:Tag="div" }: SplitTextProps) {
-  const containerRef = useRef<HTMLElement>(null);
-  const tlRef = useRef<gsap.core.Timeline|null>(null);
-  useEffect(() => {
-    const container = containerRef.current; if (!container) return;
-    const buildSpans = (): HTMLElement[] => {
-      container.innerHTML = "";
-      if (splitType==="chars") {
-        const spans: HTMLElement[] = [];
-        text.split(" ").forEach((word,wi,arr) => {
-          const wordEl = document.createElement("span"); wordEl.style.display="inline-block"; wordEl.style.whiteSpace="nowrap";
-          word.split("").forEach(char => { const el=document.createElement("span"); el.textContent=char; el.style.display="inline-block"; el.style.willChange="transform, opacity"; wordEl.appendChild(el); spans.push(el); });
-          container.appendChild(wordEl);
-          if (wi<arr.length-1) { const sp=document.createElement("span"); sp.innerHTML="&nbsp;"; sp.style.display="inline-block"; container.appendChild(sp); }
-        });
-        return spans;
-      }
-      if (splitType==="words") return text.split(" ").map((word,wi,arr) => { const el=document.createElement("span"); el.textContent=word+(wi<arr.length-1?"\u00A0":""); el.style.display="inline-block"; el.style.willChange="transform, opacity"; container.appendChild(el); return el; });
-      return text.split("\n").map(line => { const el=document.createElement("span"); el.textContent=line; el.style.display="block"; el.style.willChange="transform, opacity"; container.appendChild(el); return el; });
-    };
-    const targets = buildSpans(); if (!targets.length) return;
-    gsap.set(targets, { ...from });
-    tlRef.current = gsap.timeline({ paused:true, onComplete:()=>{ if(showCallback&&onLetterAnimationComplete) onLetterAnimationComplete(); } });
-    tlRef.current.to(targets, { ...to, duration, ease, stagger:delay/1000 });
-    const io = new IntersectionObserver((entries) => entries.forEach(e => { if(e.isIntersecting){tlRef.current?.play();io.unobserve(container);} }), { threshold, rootMargin });
-    io.observe(container);
-    return () => { io.disconnect(); tlRef.current?.kill(); if(container) container.innerHTML=text; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text]);
-  return <Tag ref={containerRef as React.Ref<never>} className={className} style={{ textAlign, lineHeight:"inherit" }} aria-label={text} />;
-}
-
-function SplitText(props: SplitTextProps) {
-  if (props.hoverRoll) return <HoverRollSplitText {...props} />;
-  return <StandardSplitText {...props} />;
-}
-
-/* ════════════════════════════════════════════════════════
-   ROLL BUTTON
-════════════════════════════════════════════════════════ */
-const RB_STAGGER = 0.028;
-const RBLabel = ({ children, hovered }: { children:string; hovered:boolean }) => {
-  const chars = children.split("");
-  return (
-    <span style={{ position:"relative", display:"inline-block", overflow:"hidden", lineHeight:1, verticalAlign:"top" }}>
-      <span aria-hidden style={{ display:"block" }}>
-        {chars.map((l,i) => (
-          <motion.span key={i} animate={hovered?{y:"-100%"}:{y:0}}
-            transition={{ ease:"easeInOut", duration:0.36, delay:RB_STAGGER*i }}
-            style={{ display:"inline-block" }}>{l===" "?"\u00A0":l}</motion.span>
-        ))}
-      </span>
-      <span aria-hidden style={{ display:"block", position:"absolute", inset:0 }}>
-        {chars.map((l,i) => (
-          <motion.span key={i} animate={hovered?{y:0}:{y:"100%"}}
-            transition={{ ease:"easeInOut", duration:0.36, delay:RB_STAGGER*i }}
-            style={{ display:"inline-block" }}>{l===" "?"\u00A0":l}</motion.span>
-        ))}
-      </span>
-    </span>
-  );
-};
-
 const RollButton = ({ label, href, variant="filled", onClick }: { label:string; href?:string; variant?:"filled"|"outline"; onClick?:(e:React.MouseEvent)=>void }) => {
   const [hov, setHov] = React.useState(false);
   const isFilled = variant === "filled";
@@ -200,7 +27,7 @@ const RollButton = ({ label, href, variant="filled", onClick }: { label:string; 
         boxShadow: isFilled ? "0 2px 16px rgba(200,55,45,0.32)" : "none",
       }}
     >
-      <RBLabel hovered={hov}>{label}</RBLabel>
+      {label}
     </motion.span>
   );
   if (href) return <Link href={href} style={{ textDecoration:"none" }} onClick={onClick}>{inner}</Link>;
@@ -210,8 +37,6 @@ const RollButton = ({ label, href, variant="filled", onClick }: { label:string; 
 /* ════════════════════════════════════════════════════════
    JOBS DATA
 ════════════════════════════════════════════════════════ */
-import React from "react";
-
 const JOBS = [
   {
     id:"01", title:"Senior Cinematographer", dept:"Production", type:"Full-time", loc:"Mumbai, India",
@@ -284,7 +109,7 @@ export default function Careers() {
 
   const [emailError, setEmailError] = React.useState("");
 
-  /* ── UPDATED handleSubmit with timeout + 0x0.st upload ── */
+  /* ── UPDATED handleSubmit with timeout + Cloudinary upload ── */
  const handleSubmit = async () => {
     if (!form.name || !form.email || !cvFile || !applyJob) return;
     setEmailError("");
@@ -429,6 +254,8 @@ export default function Careers() {
           line-height:0.88 !important; letter-spacing:-0.02em !important;
           color:var(--black) !important; text-transform:uppercase;
           padding-bottom:10px; display:block; overflow:visible;
+          opacity:0; transform:translateY(40px);
+          animation: crFadeUp 0.9s 0.1s cubic-bezier(0.16,1,0.3,1) forwards;
         }
         .cr-headline-accent {
           font-family:'Playfair Display',serif !important;
@@ -437,6 +264,12 @@ export default function Careers() {
           color:var(--red) !important; line-height:1 !important;
           letter-spacing:-0.01em !important; display:block;
           margin-top:8px; overflow:visible;
+          opacity:0; transform:translateY(40px);
+          animation: crFadeUp 0.9s 0.28s cubic-bezier(0.16,1,0.3,1) forwards;
+        }
+        @keyframes crFadeUp {
+          from { opacity:0; transform:translateY(40px); }
+          to   { opacity:1; transform:translateY(0); }
         }
 
         /* ── intro dark card ── */
@@ -828,30 +661,8 @@ export default function Careers() {
           {/* ── Hero: headlines + dark card ── */}
           <div className="cr-hero">
             <div>
-              <SplitText
-                text="JOIN THE"
-                tag="div"
-                className="cr-headline"
-                delay={45} duration={1.25} ease="power3.out"
-                splitType="chars"
-                from={{ opacity:0, y:60 }} to={{ opacity:1, y:0 }}
-                threshold={0.1} rootMargin="-60px"
-                textAlign="left"
-                hoverRoll hoverRollDirection="center"
-                autoRoll autoRollInterval={5000} autoRollDuration={580}
-              />
-              <SplitText
-                text="Vision."
-                tag="div"
-                className="cr-headline-accent"
-                delay={35} duration={1.4} ease="power4.out"
-                splitType="words"
-                from={{ opacity:0, y:80, skewX:8 }} to={{ opacity:1, y:0, skewX:0 }}
-                threshold={0.1} rootMargin="-60px"
-                textAlign="left"
-                hoverRoll hoverRollDirection="left"
-                autoRoll autoRollInterval={5600} autoRollDuration={580}
-              />
+              <div className="cr-headline">JOIN THE</div>
+              <div className="cr-headline-accent">Vision.</div>
             </div>
 
             <div className="cr-intro-card" data-reveal data-d="2">
