@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint"
   },
+     "build": "next build --webpack",
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
     "@gsap/react": "^2.1.2",
