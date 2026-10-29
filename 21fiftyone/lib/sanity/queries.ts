@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { groq } from 'next-sanity'
 import { client } from './client'
 import type { Post } from './types'
@@ -43,9 +44,10 @@ export async function getAllPosts(): Promise<Post[]> {
   return client.fetch(POSTS_QUERY, {}, { next: { revalidate: 60 } })
 }
 
-export async function getPostBySlug(slug: string): Promise<Post | null> {
+// Wrapped in cache() so generateMetadata and the page share one request
+export const getPostBySlug = cache(async (slug: string): Promise<Post | null> => {
   return client.fetch(POST_BY_SLUG_QUERY, { slug }, { next: { revalidate: 60 } })
-}
+})
 
 export async function getAllPostSlugs(): Promise<string[]> {
   return client.fetch(POST_SLUGS_QUERY, {}, { next: { revalidate: 60 } })

@@ -16,6 +16,13 @@ interface Props {
   allPosts: Post[];
 }
 
+// Returns a formatted date, or "" if the post has no valid publishedAt
+function formatDate(value: string | undefined, options: Intl.DateTimeFormatOptions) {
+  if (!value) return "";
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", options);
+}
+
 export default function BlogDetailClient({ post, allPosts }: Props) {
   const sectionRef = useRef<HTMLDivElement>(null);
   const [mainImageFailed, setMainImageFailed] = useState(false);
@@ -51,13 +58,19 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
   // upscaling or erroring on a source image smaller than the target box.
   const mainImageBuilder = post.mainImage ? urlForImage(post.mainImage) : null;
   const mainImageUrl = mainImageBuilder
-    ? mainImageBuilder.width(1400).fit("max").auto("format").url()
+    ? mainImageBuilder.width(1800).fit("max").auto("format").url()
     : null;
 
   const authorImageBuilder = post.author?.image ? urlForImage(post.author.image) : null;
   const authorImageUrl = authorImageBuilder
     ? authorImageBuilder.width(112).fit("max").auto("format").url()
     : null;
+
+  const publishedDate = formatDate(post.publishedAt, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   const portableTextComponents: PortableTextComponents = {
     types: {
@@ -68,10 +81,10 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         return (
           <div className="blog-body-image">
             <Image
-              src={builder.width(1200).fit("max").auto("format").url()}
+              src={builder.width(1400).fit("max").auto("format").url()}
               alt={value.alt || post.title}
               fill
-              sizes="(max-width: 900px) 100vw, 720px"
+              sizes="(max-width: 1000px) 100vw, 1000px"
               className="object-cover"
             />
           </div>
@@ -81,6 +94,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
     block: {
       h2: ({ children }) => <h2 className="blog-body-h2">{children}</h2>,
       h3: ({ children }) => <h3 className="blog-body-h3">{children}</h3>,
+      h4: ({ children }) => <h4 className="blog-body-h4">{children}</h4>,
       normal: ({ children }) => <p className="blog-body-p">{children}</p>,
       blockquote: ({ children }) => (
         <div className="blog-quote-block">
@@ -88,10 +102,20 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         </div>
       ),
     },
+    list: {
+      bullet: ({ children }) => <ul className="blog-body-ul">{children}</ul>,
+      number: ({ children }) => <ol className="blog-body-ol">{children}</ol>,
+    },
+    listItem: {
+      bullet: ({ children }) => <li className="blog-body-li">{children}</li>,
+      number: ({ children }) => <li className="blog-body-li">{children}</li>,
+    },
     marks: {
+      strong: ({ children }) => <strong className="blog-body-strong">{children}</strong>,
+      em: ({ children }) => <em className="blog-body-em">{children}</em>,
       link: ({ children, value }) => (
-        
-        <a  href={value?.href}
+        <a
+          href={value?.href}
           className="blog-body-link"
           target="_blank"
           rel="noopener noreferrer"
@@ -106,36 +130,49 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans">
       <style>{`
         :root {
-          --cream:    #f2ede6;
-          --black:    #0c0c0c;
-          --red:      #c8372d;
-          --muted:    #8a8480;
-          --line:     rgba(12,12,12,0.12);
+          --cream:      #f2ede6;
+          --black:      #0c0c0c;
+          --red:        #c8372d;
+          --muted:      #8a8480;
+          --line:       rgba(12,12,12,0.12);
+          --body:       #3a3735;
+          --gutter:     56px;      /* left/right page padding */
+          --sidebar-w:  340px;     /* sidebar width */
+          --read-width: 1000px;    /* max width of body text; use 100% for edge-to-edge */
         }
 
         * { box-sizing: border-box; }
 
-        .post-wrap { width: 100%; background: var(--cream); }
+        .post-wrap { width: 100%; background: var(--cream); color: var(--body); }
 
+        /* ---------- Full-width layout ---------- */
         .post-layout {
-          max-width: 1320px;
-          margin: 0 auto;
+          width: 100%;
           padding-top: 160px;
           display: grid;
-          grid-template-columns: minmax(0, 1fr) 260px;
+          grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
           gap: 0;
           align-items: start;
-          overflow-x: hidden;
         }
 
+        /* ---------- Sidebar ---------- */
         .post-sidebar {
           position: sticky;
-          top: 120px;
-          padding: 0 64px 80px 32px;
-          border-left: 1px solid var(--line);
-          height: calc(100vh - 160px);
+          top: 110px;
+          max-height: calc(100vh - 130px);
           overflow-y: auto;
+          padding: 0 var(--gutter) 40px 28px;
+          border-left: 1px solid var(--line);
+          scrollbar-width: thin;
+          scrollbar-color: transparent transparent;
+          transition: scrollbar-color 0.2s ease;
         }
+        .post-sidebar:hover { scrollbar-color: rgba(12,12,12,0.22) transparent; }
+        .post-sidebar::-webkit-scrollbar { width: 4px; }
+        .post-sidebar::-webkit-scrollbar-track { background: transparent; }
+        .post-sidebar::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+        .post-sidebar:hover::-webkit-scrollbar-thumb { background: rgba(12,12,12,0.22); }
+
         .post-sidebar-eyebrow {
           font-family: 'DM Sans', sans-serif;
           font-size: 10px;
@@ -143,7 +180,8 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
           letter-spacing: 0.25em;
           text-transform: uppercase;
           color: var(--red);
-          margin-bottom: 28px;
+          margin: 0 0 20px;
+          padding-left: 14px;
           display: flex;
           align-items: center;
           gap: 12px;
@@ -156,11 +194,12 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         .post-nav-list {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 2px;
         }
         .post-nav-item {
           display: flex;
-          gap: 12px;
+          align-items: flex-start;
+          gap: 14px;
           padding: 14px 14px;
           border-radius: 8px;
           text-decoration: none;
@@ -174,36 +213,43 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         }
         .post-nav-index {
           font-family: 'Anton', sans-serif;
-          font-size: 11px;
+          font-size: 12px;
+          line-height: 1.6;
           color: var(--muted);
-          padding-top: 2px;
+          width: 18px;
           flex-shrink: 0;
         }
         .post-nav-item.active .post-nav-index { color: var(--red); }
+        .post-nav-text { min-width: 0; flex: 1; }
         .post-nav-title {
           font-family: 'DM Sans', sans-serif;
-          font-size: 12.5px;
+          font-size: 14px;
           font-weight: 500;
-          line-height: 1.4;
+          line-height: 1.45;
           color: var(--black);
+          display: -webkit-box;
+          -webkit-line-clamp: 3;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
+        .post-nav-item:hover .post-nav-title { color: var(--red); }
         .post-nav-item.active .post-nav-title { color: var(--red); }
         .post-nav-date {
           font-family: 'DM Sans', sans-serif;
           font-size: 10px;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.1em;
           text-transform: uppercase;
           color: var(--muted);
-          margin-top: 4px;
+          margin-top: 6px;
           display: block;
         }
 
+        /* ---------- Main column ---------- */
         .post-main { min-width: 0; overflow-x: hidden; }
 
         .post-header {
           width: 100%;
-          padding: 0 64px;
-          max-width: 900px;
+          padding: 0 var(--gutter);
         }
 
         .post-back {
@@ -242,7 +288,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
 
         .post-title {
           font-family: 'Anton', sans-serif;
-          font-size: clamp(34px, 5vw, 64px);
+          font-size: clamp(34px, 5vw, 72px);
           line-height: 1.05;
           letter-spacing: -0.01em;
           text-transform: uppercase;
@@ -250,6 +296,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
           margin-bottom: 28px;
           padding-left: 4px;
           margin-left: -4px;
+          max-width: 1100px;
           overflow-wrap: break-word;
           word-break: break-word;
         }
@@ -269,14 +316,14 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         .post-meta-dot { opacity: 0.5; }
 
         .post-image-wrap {
-          max-width: 1000px;
+          width: 100%;
           margin: 56px 0 0;
-          padding: 0 64px;
+          padding: 0 var(--gutter);
         }
         .post-image {
           position: relative;
           width: 100%;
-          aspect-ratio: 16 / 8.5;
+          aspect-ratio: 16 / 8;
           border-radius: 16px;
           overflow: hidden;
           background: #e5ded3;
@@ -302,43 +349,82 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         }
 
         .post-article {
-          max-width: 720px;
-          padding: 64px 64px 40px;
+          width: 100%;
+          padding: 64px var(--gutter) 40px;
           font-family: 'DM Sans', sans-serif;
+          color: var(--body);
         }
+        .post-article-inner { max-width: var(--read-width); }
 
         .blog-body-p {
           font-family: 'DM Sans', sans-serif;
           font-weight: 300;
-          font-size: 17px;
+          font-size: 18px;
           line-height: 1.9;
-          color: #3a3735;
+          color: var(--body);
           margin: 0 0 26px;
           overflow-wrap: break-word;
           word-break: break-word;
         }
         .blog-body-h2 {
           font-family: 'Anton', sans-serif;
-          font-size: 30px;
+          font-size: 32px;
           letter-spacing: 0.01em;
           text-transform: uppercase;
           color: var(--black);
-          margin: 52px 0 22px;
+          margin: 56px 0 22px;
           line-height: 1.15;
           overflow-wrap: break-word;
           word-break: break-word;
         }
         .blog-body-h3 {
           font-family: 'Anton', sans-serif;
-          font-size: 22px;
+          font-size: 24px;
           letter-spacing: 0.01em;
           text-transform: uppercase;
           color: var(--black);
-          margin: 40px 0 18px;
+          margin: 44px 0 18px;
           line-height: 1.2;
           overflow-wrap: break-word;
           word-break: break-word;
         }
+        .blog-body-h4 {
+          font-family: 'DM Sans', sans-serif;
+          font-size: 19px;
+          font-weight: 600;
+          color: var(--black);
+          margin: 32px 0 14px;
+          line-height: 1.35;
+          overflow-wrap: break-word;
+          word-break: break-word;
+        }
+
+        /* ---------- Lists ---------- */
+        .blog-body-ul,
+        .blog-body-ol {
+          margin: 0 0 30px;
+          padding-left: 22px;
+          color: var(--body);
+        }
+        .blog-body-ul { list-style: disc; }
+        .blog-body-ol { list-style: decimal; }
+        .blog-body-ul .blog-body-ul { list-style: circle; margin: 10px 0 0; }
+        .blog-body-li {
+          font-family: 'DM Sans', sans-serif;
+          font-weight: 300;
+          font-size: 18px;
+          line-height: 1.8;
+          color: var(--body);
+          margin: 0 0 12px;
+          padding-left: 6px;
+          overflow-wrap: break-word;
+          word-break: break-word;
+        }
+        .blog-body-li::marker { color: var(--red); }
+
+        .blog-body-strong { font-weight: 600; color: var(--black); }
+        .blog-body-em { font-style: italic; }
+
         .blog-body-link {
           color: var(--red);
           text-decoration: underline;
@@ -374,7 +460,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         .blog-quote-block blockquote {
           font-family: 'Playfair Display', serif;
           font-style: italic;
-          font-size: 21px;
+          font-size: 22px;
           line-height: 1.55;
           color: var(--black);
           position: relative;
@@ -383,11 +469,12 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         }
 
         .post-author-card {
-          max-width: 720px;
+          width: 100%;
           margin: 24px 0 0;
-          padding: 0 64px;
+          padding: 0 var(--gutter);
         }
         .post-author-inner {
+          max-width: var(--read-width);
           display: flex;
           align-items: center;
           gap: 20px;
@@ -422,8 +509,8 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         }
 
         .post-cta-row {
-          max-width: 720px;
-          padding: 56px 64px 120px;
+          width: 100%;
+          padding: 56px var(--gutter) 120px;
           display: flex;
           align-items: center;
           gap: 32px;
@@ -443,15 +530,22 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
         [data-reveal][data-d="3"] { transition-delay: 0.22s; }
         [data-reveal][data-d="4"] { transition-delay: 0.30s; }
 
+        /* ---------- Responsive ---------- */
+        @media (max-width: 1280px) {
+          :root { --gutter: 40px; --sidebar-w: 300px; }
+        }
         @media (max-width: 1000px) {
+          :root { --gutter: 40px; }
           .post-layout { grid-template-columns: 1fr; padding-top: 140px; }
           .post-sidebar { display: none; }
           .post-mobile-nav {
             display: block;
-            padding: 0 40px 32px;
+            padding: 0 var(--gutter) 32px;
             overflow-x: auto;
             white-space: nowrap;
+            scrollbar-width: none;
           }
+          .post-mobile-nav::-webkit-scrollbar { display: none; }
           .post-mobile-nav-inner { display: inline-flex; gap: 10px; }
           .post-mobile-nav-item {
             font-family: 'DM Sans', sans-serif;
@@ -465,19 +559,24 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
             color: var(--muted);
             text-decoration: none;
             flex-shrink: 0;
+            max-width: 260px;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
           .post-mobile-nav-item.active { border-color: var(--red); color: var(--red); }
           .post-back { display: inline-flex; }
-          .post-header, .post-image-wrap, .post-article,
-          .post-author-card, .post-cta-row { padding-left: 40px; padding-right: 40px; }
+          .post-image { aspect-ratio: 16 / 9; }
         }
         @media (max-width: 560px) {
+          :root { --gutter: 20px; }
           .post-layout { padding-top: 120px; }
-          .post-mobile-nav { padding: 0 24px 24px; }
-          .post-header, .post-image-wrap, .post-article,
-          .post-author-card, .post-cta-row { padding-left: 24px; padding-right: 24px; }
           .post-cta-row { flex-direction: column; align-items: flex-start; gap: 20px; }
-          .post-author-inner { flex-direction: column; align-items: flex-start; }
+          .post-author-inner { flex-direction: column; align-items: flex-start; padding: 24px; }
+          .blog-body-p, .blog-body-li { font-size: 16px; }
+          .blog-body-h2 { font-size: 26px; }
+          .blog-body-h3 { font-size: 21px; }
+          .blog-quote-block { padding: 28px 24px; }
+          .blog-quote-block blockquote { font-size: 19px; }
         }
       `}</style>
 
@@ -530,14 +629,12 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
 
               <div className="post-meta" data-reveal data-d="3">
                 {post.author?.name && <span>{post.author.name}</span>}
-                <span className="post-meta-dot">&middot;</span>
-                <time dateTime={post.publishedAt}>
-                  {new Date(post.publishedAt).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </time>
+                {post.author?.name && publishedDate && (
+                  <span className="post-meta-dot">&middot;</span>
+                )}
+                {publishedDate && (
+                  <time dateTime={post.publishedAt}>{publishedDate}</time>
+                )}
               </div>
             </header>
 
@@ -550,7 +647,7 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
                       alt={post.mainImage?.alt || post.title}
                       fill
                       priority
-                      sizes="(max-width: 900px) 100vw, 1000px"
+                      sizes="(max-width: 1000px) 100vw, calc(100vw - 340px)"
                       className="object-cover"
                       onError={() => setMainImageFailed(true)}
                     />
@@ -564,9 +661,11 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
             )}
 
             <article className="post-article" data-reveal data-d="4">
-              {post.body && (
-                <PortableText value={post.body} components={portableTextComponents} />
-              )}
+              <div className="post-article-inner">
+                {post.body && (
+                  <PortableText value={post.body} components={portableTextComponents} />
+                )}
+              </div>
             </article>
 
             {post.author?.name && (
@@ -606,17 +705,15 @@ export default function BlogDetailClient({ post, allPosts }: Props) {
                   key={p._id}
                   href={`/blog/${p.slug}`}
                   className={`post-nav-item ${p.slug === post.slug ? "active" : ""}`}
+                  title={p.title}
                 >
                   <span className="post-nav-index">
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <span>
+                  <span className="post-nav-text">
                     <span className="post-nav-title">{p.title}</span>
                     <span className="post-nav-date">
-                      {new Date(p.publishedAt).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {formatDate(p.publishedAt, { month: "short", day: "numeric" })}
                     </span>
                   </span>
                 </Link>
